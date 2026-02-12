@@ -18,7 +18,8 @@ import {
     Home,
     FileSpreadsheet,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    Calculator
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -52,6 +53,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
                 { path: '/salary-costs', icon: FileSpreadsheet, label: 'Coût Salaires' },
                 { path: '/payroll', icon: CreditCard, label: 'Paie' },
                 { path: '/reports', icon: BarChart3, label: 'Rapports' },
+                { path: '/synthesis', icon: Calculator, label: 'Synthèse' },
             ]
         }
     ];
@@ -76,19 +78,10 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     return (
         <>
             {/* Mobile overlay */}
-            {isOpen && (
-                <div
-                    className="sidebar-overlay"
-                    onClick={onClose}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.5)',
-                        zIndex: 99,
-                        display: 'none'
-                    }}
-                />
-            )}
+            <div
+                className={`sidebar-overlay ${isOpen ? 'active' : ''}`}
+                onClick={onClose}
+            />
 
             <aside className={`sidebar ${isOpen ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
                 {/* Toggle button */}

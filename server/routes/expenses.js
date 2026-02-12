@@ -3,6 +3,87 @@ import pool from '../database/db.js';
 
 const router = express.Router();
 
+// Get VAT summary by month
+router.get('/vat-summary', async (req, res) => {
+    try {
+        const { month } = req.query;
+        const targetDate = month ? `${month}-01` : new Date().toISOString().slice(0, 10);
+        
+        let query = `
+            SELECT 
+                s.id as salon_id,
+                s.name as salon_name,
+                $1::text as month,
+                
+                -- Variable expenses VAT
+                COUNT(DISTINCT e.id) FILTER (WHERE e.type = 'variable') as variable_expense_count,
+                COALESCE(SUM(CASE WHEN e.vat_recoverable = true AND e.type = 'variable' THEN e.vat_amount ELSE 0 END), 0) as variable_vat_recoverable,
+                COALESCE(SUM(CASE WHEN e.vat_recoverable = true AND e.type = 'variable' THEN e.amount_ht ELSE 0 END), 0) as variable_total_ht,
+                
+                -- Fixed expenses VAT
+                COUNT(DISTINCT fe.id) as fixed_expense_count,
+                COALESCE(SUM(
+                    CASE 
+                        WHEN fea_vat_recoverable = true THEN fea_vat_amount 
+                        ELSE 0 
+                    END
+                ), 0) as fixed_vat_recoverable,
+                COALESCE(SUM(
+                    CASE 
+                        WHEN fea_vat_recoverable = true THEN fea_amount_ht
+                        ELSE 0 
+                    END
+                ), 0) as fixed_total_ht,
+                
+                -- Total
+                COALESCE(SUM(CASE WHEN e.vat_recoverable = true AND e.type = 'variable' THEN e.vat_amount ELSE 0 END), 0) +
+                COALESCE(SUM(
+                    CASE 
+                        WHEN fea_vat_recoverable = true THEN fea_vat_amount 
+                        ELSE 0 
+                    END
+                ), 0) as total_vat_recoverable,
+                
+                COALESCE(SUM(CASE WHEN e.vat_recoverable = true AND e.type = 'variable' THEN e.amount_ht ELSE 0 END), 0) +
+                COALESCE(SUM(
+                    CASE 
+                        WHEN fea_vat_recoverable = true THEN fea_amount_ht
+                        ELSE 0 
+                    END
+                ), 0) as total_ht_with_vat,
+                
+                COALESCE(SUM(e.amount), 0) + COALESCE(SUM(fea_amount), 0) as total_ttc
+                
+            FROM salons s
+            LEFT JOIN expenses e ON e.salon_id = s.id AND TO_CHAR(e.date, 'YYYY-MM') = $1
+            LEFT JOIN fixed_expenses fe ON fe.salon_id = s.id AND fe.is_active = true
+            LEFT JOIN LATERAL (
+                SELECT 
+                    fea.amount as fea_amount,
+                    fea.amount_ht as fea_amount_ht,
+                    fea.vat_rate as fea_vat_rate,
+                    fea.vat_amount as fea_vat_amount,
+                    fea.vat_recoverable as fea_vat_recoverable
+                FROM fixed_expense_amounts fea
+                WHERE fea.fixed_expense_id = fe.id
+                  AND fea.effective_from <= $2
+                ORDER BY fea.effective_from DESC
+                LIMIT 1
+            ) fea ON true
+            WHERE s.is_active = true
+            GROUP BY s.id, s.name
+            ORDER BY s.name
+        `;
+        
+        const params = [month || new Date().toISOString().slice(0, 7), targetDate];
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching VAT summary:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 // Get all expenses with filters
 router.get('/', async (req, res) => {
     try {
@@ -123,17 +204,21 @@ router.get('/:id', async (req, res) => {
 // Create expense
 router.post('/', async (req, res) => {
     try {
-        const { salon_id, type, category, amount, date, description } = req.body;
+        const { salon_id, type, category, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, date, description } = req.body;
         
         const result = await pool.query(
-            `INSERT INTO expenses (salon_id, type, category, amount, date, description) 
-             VALUES ($1, $2, $3, $4, $5, $6) 
+            `INSERT INTO expenses (salon_id, type, category, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, date, description) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
              RETURNING *`,
             [
                 salon_id,
                 type || 'variable',
                 category || 'other',
                 amount || 0,
+                amount_ht || amount || 0,
+                vat_rate || 0,
+                vat_amount || 0,
+                vat_recoverable || false,
                 date || new Date().toISOString().split('T')[0],
                 description || ''
             ]
@@ -149,14 +234,15 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { salon_id, type, category, amount, date, description } = req.body;
+        const { salon_id, type, category, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, date, description } = req.body;
         
         const result = await pool.query(
             `UPDATE expenses 
-             SET salon_id = $1, type = $2, category = $3, amount = $4, date = $5, description = $6
-             WHERE id = $7 
+             SET salon_id = $1, type = $2, category = $3, amount = $4, amount_ht = $5, 
+                 vat_rate = $6, vat_amount = $7, vat_recoverable = $8, date = $9, description = $10
+             WHERE id = $11 
              RETURNING *`,
-            [salon_id, type, category, amount, date, description, id]
+            [salon_id, type, category, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, date, description, id]
         );
         
         if (result.rows.length === 0) {

@@ -1,17 +1,16 @@
 import React from 'react';
-import { Search, Bell, Menu, User } from 'lucide-react';
+import { Search, Bell, Menu, User, X } from 'lucide-react';
 
-const Header = ({ title, onMenuClick }) => {
+const Header = ({ title, onMenuClick, sidebarOpen }) => {
     return (
         <header className="header">
             <div className="header-left">
                 <button
-                    className="btn btn-ghost btn-icon"
+                    className="btn btn-ghost btn-icon mobile-menu-btn"
                     onClick={onMenuClick}
-                    style={{ display: 'none' }}
-                    id="menu-toggle"
+                    aria-label={sidebarOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
                 >
-                    <Menu size={20} />
+                    {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
 
                 <h1 className="header-title">{title}</h1>

@@ -17,6 +17,7 @@ import presenceRoutes from './routes/presence.js';
 import analyticsRoutes from './routes/analytics.js';
 import salaryCostsRoutes from './routes/salaryCosts.js';
 import salaryPaymentsRoutes from './routes/salaryPayments.js';
+import synthesisRoutes from './routes/synthesis.js';
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/salary-costs', salaryCostsRoutes);
 app.use('/api/salary-payments', salaryPaymentsRoutes);
 app.use('/api/fixed-expenses', fixedExpensesRoutes);
+app.use('/api/synthesis', synthesisRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -16,6 +16,7 @@ import SalaryCosts from './pages/SalaryCosts';
 import Payroll from './pages/Payroll';
 import Reports from './pages/Reports';
 import MonEspace from './pages/MonEspace';
+import Synthesis from './pages/Synthesis';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -139,6 +140,11 @@ function AppRoutes() {
             <Route path="/reports" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                     <Layout><Reports /></Layout>
+                </ProtectedRoute>
+            } />
+            <Route path="/synthesis" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                    <Layout><Synthesis /></Layout>
                 </ProtectedRoute>
             } />
 

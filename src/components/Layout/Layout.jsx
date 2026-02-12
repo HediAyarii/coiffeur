@@ -58,7 +58,8 @@ const Layout = ({ children }) => {
             <main className="main-content">
                 <Header
                     title={title}
-                    onMenuClick={() => setSidebarOpen(true)}
+                    onMenuClick={() => setSidebarOpen(!sidebarOpen)}
+                    sidebarOpen={sidebarOpen}
                 />
 
                 <div className="page-container">

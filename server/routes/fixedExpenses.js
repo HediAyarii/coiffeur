@@ -29,6 +29,42 @@ router.get('/', async (req, res) => {
                      LIMIT 1
                     ), 0
                 ) as amount,
+                COALESCE(
+                    (SELECT fea.amount_ht 
+                     FROM fixed_expense_amounts fea 
+                     WHERE fea.fixed_expense_id = fe.id 
+                       AND fea.effective_from <= $1
+                     ORDER BY fea.effective_from DESC 
+                     LIMIT 1
+                    ), 0
+                ) as amount_ht,
+                COALESCE(
+                    (SELECT fea.vat_rate 
+                     FROM fixed_expense_amounts fea 
+                     WHERE fea.fixed_expense_id = fe.id 
+                       AND fea.effective_from <= $1
+                     ORDER BY fea.effective_from DESC 
+                     LIMIT 1
+                    ), 0
+                ) as vat_rate,
+                COALESCE(
+                    (SELECT fea.vat_amount 
+                     FROM fixed_expense_amounts fea 
+                     WHERE fea.fixed_expense_id = fe.id 
+                       AND fea.effective_from <= $1
+                     ORDER BY fea.effective_from DESC 
+                     LIMIT 1
+                    ), 0
+                ) as vat_amount,
+                COALESCE(
+                    (SELECT fea.vat_recoverable 
+                     FROM fixed_expense_amounts fea 
+                     WHERE fea.fixed_expense_id = fe.id 
+                       AND fea.effective_from <= $1
+                     ORDER BY fea.effective_from DESC 
+                     LIMIT 1
+                    ), false
+                ) as vat_recoverable,
                 (SELECT fea.effective_from 
                  FROM fixed_expense_amounts fea 
                  WHERE fea.fixed_expense_id = fe.id 
@@ -117,7 +153,7 @@ router.get('/:id/history', async (req, res) => {
 router.post('/', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { salon_id, category, name, description, amount, effective_from } = req.body;
+        const { salon_id, category, name, description, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from } = req.body;
         
         await client.query('BEGIN');
 
@@ -131,12 +167,20 @@ router.post('/', async (req, res) => {
         
         const fixedExpense = expenseResult.rows[0];
 
-        // Create the initial amount
+        // Create the initial amount with VAT fields
         const effectiveDate = effective_from || new Date().toISOString().slice(0, 10);
         await client.query(
-            `INSERT INTO fixed_expense_amounts (fixed_expense_id, amount, effective_from) 
-             VALUES ($1, $2, $3)`,
-            [fixedExpense.id, amount || 0, effectiveDate]
+            `INSERT INTO fixed_expense_amounts (fixed_expense_id, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                fixedExpense.id, 
+                amount || 0, 
+                amount_ht || amount || 0,
+                vat_rate || 0,
+                vat_amount || 0,
+                vat_recoverable || false,
+                effectiveDate
+            ]
         );
 
         await client.query('COMMIT');
@@ -144,6 +188,10 @@ router.post('/', async (req, res) => {
         res.status(201).json({
             ...fixedExpense,
             amount: amount || 0,
+            amount_ht: amount_ht || amount || 0,
+            vat_rate: vat_rate || 0,
+            vat_amount: vat_amount || 0,
+            vat_recoverable: vat_recoverable || false,
             amount_effective_from: effectiveDate
         });
     } catch (error) {
@@ -184,7 +232,7 @@ router.put('/:id', async (req, res) => {
 router.post('/:id/amount', async (req, res) => {
     try {
         const { id } = req.params;
-        const { amount, effective_from } = req.body;
+        const { amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from } = req.body;
         
         // Check if fixed expense exists
         const checkResult = await pool.query(
@@ -207,20 +255,20 @@ router.post('/:id/amount', async (req, res) => {
             // Update existing
             await pool.query(
                 `UPDATE fixed_expense_amounts 
-                 SET amount = $1 
-                 WHERE fixed_expense_id = $2 AND effective_from = $3`,
-                [amount, id, effective_from]
+                 SET amount = $1, amount_ht = $2, vat_rate = $3, vat_amount = $4, vat_recoverable = $5
+                 WHERE fixed_expense_id = $6 AND effective_from = $7`,
+                [amount, amount_ht || amount, vat_rate || 0, vat_amount || 0, vat_recoverable || false, id, effective_from]
             );
         } else {
             // Insert new amount version
             await pool.query(
-                `INSERT INTO fixed_expense_amounts (fixed_expense_id, amount, effective_from) 
-                 VALUES ($1, $2, $3)`,
-                [id, amount, effective_from]
+                `INSERT INTO fixed_expense_amounts (fixed_expense_id, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from) 
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [id, amount, amount_ht || amount, vat_rate || 0, vat_amount || 0, vat_recoverable || false, effective_from]
             );
         }
 
-        res.json({ message: 'Montant mis à jour', amount, effective_from });
+        res.json({ message: 'Montant mis à jour', amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from });
     } catch (error) {
         console.error('Error updating amount:', error);
         res.status(500).json({ error: 'Erreur serveur' });

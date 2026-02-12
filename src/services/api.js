@@ -230,6 +230,7 @@ export const expensesAPI = {
     getThisMonth: () => fetchAPI('/expenses/month'),
     getBySalon: (salonId) => fetchAPI(`/expenses/salon/${salonId}`),
     getCategories: () => fetchAPI('/expenses/categories'),
+    getVatSummary: (month) => fetchAPI(`/expenses/vat-summary${month ? `?month=${month}` : ''}`),
     getById: (id) => fetchAPI(`/expenses/${id}`),
     create: (data) => fetchAPI('/expenses', {
         method: 'POST',
@@ -366,12 +367,31 @@ export const fixedExpensesAPI = {
         method: 'PUT',
         body: JSON.stringify(data)
     }),
-    updateAmount: (id, amount, effectiveFrom) => fetchAPI(`/fixed-expenses/${id}/amount`, {
+    updateAmount: (id, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effectiveFrom) => fetchAPI(`/fixed-expenses/${id}/amount`, {
         method: 'POST',
-        body: JSON.stringify({ amount, effective_from: effectiveFrom })
+        body: JSON.stringify({ 
+            amount, 
+            amount_ht, 
+            vat_rate, 
+            vat_amount, 
+            vat_recoverable, 
+            effective_from: effectiveFrom 
+        })
     }),
     delete: (id) => fetchAPI(`/fixed-expenses/${id}`, {
         method: 'DELETE'
+    })
+};
+
+// ========================================
+// SYNTHESIS API
+// ========================================
+export const synthesisAPI = {
+    getSynthesis: (month) => fetchAPI(`/synthesis${month ? `?month=${month}` : ''}`),
+    getDeclaredCash: (salonId, month) => fetchAPI(`/synthesis/declared-cash/${salonId}/${month}`),
+    updateDeclaredCash: (salon_id, month, declared_amount) => fetchAPI('/synthesis/declared-cash', {
+        method: 'POST',
+        body: JSON.stringify({ salon_id, month, declared_amount })
     })
 };
 
@@ -389,5 +409,6 @@ export default {
     presence: presenceAPI,
     analytics: analyticsAPI,
     salaryCosts: salaryCostsAPI,
-    salaryPayments: salaryPaymentsAPI
+    salaryPayments: salaryPaymentsAPI,
+    synthesis: synthesisAPI
 };

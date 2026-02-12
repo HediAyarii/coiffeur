@@ -12,6 +12,7 @@ const Expenses = () => {
     // Fixed expenses (recurring)
     const [fixedExpenses, setFixedExpenses] = useState([]);
     const [salons, setSalons] = useState([]);
+    const [vatSummary, setVatSummary] = useState([]);
     
     // Modals
     const [showVariableModal, setShowVariableModal] = useState(false);
@@ -36,6 +37,10 @@ const Expenses = () => {
         salon_id: '',
         category: 'supplies',
         amount: '',
+        amount_ht: '',
+        vat_rate: 0,
+        vat_amount: 0,
+        vat_recoverable: false,
         date: new Date().toISOString().split('T')[0],
         description: ''
     });
@@ -47,12 +52,20 @@ const Expenses = () => {
         name: '',
         description: '',
         amount: '',
+        amount_ht: '',
+        vat_rate: 0,
+        vat_amount: 0,
+        vat_recoverable: false,
         effective_from: new Date().toISOString().slice(0, 7) + '-01'
     });
     
     // Form for updating amount
     const [amountFormData, setAmountFormData] = useState({
         amount: '',
+        amount_ht: '',
+        vat_rate: 0,
+        vat_amount: 0,
+        vat_recoverable: false,
         effective_from: ''
     });
 
@@ -124,6 +137,10 @@ const Expenses = () => {
             if (filterSalon) fixedParams.salon_id = filterSalon;
             const fixed = await fixedExpensesAPI.getAll(fixedParams);
             setFixedExpenses(fixed);
+
+            // Load VAT summary
+            const vatData = await expensesAPI.getVatSummary(filterMonth);
+            setVatSummary(vatData);
         } catch (err) {
             console.error('Error loading expenses:', err);
             setError('Erreur lors du chargement des dépenses');
@@ -152,6 +169,10 @@ const Expenses = () => {
             const dataToSend = {
                 ...variableFormData,
                 amount: parseFloat(variableFormData.amount),
+                amount_ht: parseFloat(variableFormData.amount_ht) || parseFloat(variableFormData.amount),
+                vat_rate: parseFloat(variableFormData.vat_rate) || 0,
+                vat_amount: parseFloat(variableFormData.vat_amount) || 0,
+                vat_recoverable: variableFormData.vat_recoverable || false,
                 type: 'variable'
             };
             if (editing) {
@@ -174,6 +195,10 @@ const Expenses = () => {
             salon_id: item.salon_id || '',
             category: item.category,
             amount: item.amount,
+            amount_ht: item.amount_ht || item.amount,
+            vat_rate: item.vat_rate || 0,
+            vat_amount: item.vat_amount || 0,
+            vat_recoverable: item.vat_recoverable || false,
             date: item.date,
             description: item.description || ''
         });
@@ -198,6 +223,10 @@ const Expenses = () => {
             salon_id: filterSalon || '',
             category: 'supplies',
             amount: '',
+            amount_ht: '',
+            vat_rate: 0,
+            vat_amount: 0,
+            vat_recoverable: false,
             date: filterMonth ? `${filterMonth}-01` : new Date().toISOString().split('T')[0],
             description: ''
         });
@@ -222,6 +251,10 @@ const Expenses = () => {
                     name: fixedFormData.name,
                     description: fixedFormData.description,
                     amount: parseFloat(fixedFormData.amount) || 0,
+                    amount_ht: parseFloat(fixedFormData.amount_ht) || parseFloat(fixedFormData.amount) || 0,
+                    vat_rate: parseFloat(fixedFormData.vat_rate) || 0,
+                    vat_amount: parseFloat(fixedFormData.vat_amount) || 0,
+                    vat_recoverable: fixedFormData.vat_recoverable || false,
                     effective_from: fixedFormData.effective_from
                 });
             }
@@ -242,6 +275,10 @@ const Expenses = () => {
             name: item.name,
             description: item.description || '',
             amount: item.amount || 0,
+            amount_ht: item.amount_ht || item.amount || 0,
+            vat_rate: item.vat_rate || 0,
+            vat_amount: item.vat_amount || 0,
+            vat_recoverable: item.vat_recoverable || false,
             effective_from: filterMonth + '-01'
         });
         setShowFixedModal(true);
@@ -267,6 +304,10 @@ const Expenses = () => {
             name: '',
             description: '',
             amount: '',
+            amount_ht: '',
+            vat_rate: 0,
+            vat_amount: 0,
+            vat_recoverable: false,
             effective_from: filterMonth + '-01'
         });
     };
@@ -276,6 +317,10 @@ const Expenses = () => {
         setSelectedFixedExpense(item);
         setAmountFormData({
             amount: item.amount || '',
+            amount_ht: item.amount_ht || item.amount || '',
+            vat_rate: item.vat_rate || 0,
+            vat_amount: item.vat_amount || 0,
+            vat_recoverable: item.vat_recoverable || false,
             effective_from: filterMonth + '-01'
         });
         setShowAmountModal(true);
@@ -287,6 +332,10 @@ const Expenses = () => {
             await fixedExpensesAPI.updateAmount(
                 selectedFixedExpense.id,
                 parseFloat(amountFormData.amount),
+                parseFloat(amountFormData.amount_ht) || parseFloat(amountFormData.amount),
+                parseFloat(amountFormData.vat_rate) || 0,
+                parseFloat(amountFormData.vat_amount) || 0,
+                amountFormData.vat_recoverable || false,
                 amountFormData.effective_from
             );
             setShowAmountModal(false);
@@ -463,9 +512,34 @@ const Expenses = () => {
         {
             header: 'Montant',
             render: (row) => (
-                <span style={{ fontWeight: 600, color: 'var(--color-error)' }}>
-                    -{formatCurrency(row.amount)}
-                </span>
+                <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-error)' }}>
+                        -{formatCurrency(row.amount)}
+                    </div>
+                    {row.vat_rate > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                            HT: {formatCurrency(row.amount_ht)} + TVA {row.vat_rate}%
+                        </div>
+                    )}
+                </div>
+            )
+        },
+        {
+            header: 'TVA',
+            width: '140px',
+            render: (row) => (
+                row.vat_rate > 0 ? (
+                    <div>
+                        <div style={{ fontWeight: 500, color: row.vat_recoverable ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                            {formatCurrency(row.vat_amount)}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: row.vat_recoverable ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+                            {row.vat_recoverable ? '✓ Récupérable' : '✗ Non récup.'}
+                        </div>
+                    </div>
+                ) : (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Sans TVA</span>
+                )
             )
         },
         {
@@ -556,6 +630,50 @@ const Expenses = () => {
                     <div className="stat-card-label">Nombre d'écritures</div>
                 </div>
             </div>
+
+            {/* TVA Récupérable Summary */}
+            {vatSummary.length > 0 && (
+                <div className="card" style={{ marginBottom: 'var(--space-6)', backgroundColor: 'var(--color-success-light)', borderLeft: '4px solid var(--color-success)' }}>
+                    <h3 className="card-title" style={{ marginBottom: 'var(--space-4)', color: 'var(--color-success)' }}>
+                        💰 TVA Récupérable - {filterMonth}
+                    </h3>
+                    <div className="grid grid-cols-3" style={{ gap: 'var(--space-4)' }}>
+                        {vatSummary
+                            .filter(v => filterSalon ? v.salon_id === filterSalon : true)
+                            .map(summary => (
+                            <div key={summary.salon_id} className="card" style={{ padding: 'var(--space-4)' }}>
+                                <div style={{ fontSize: '0.875rem', fontWeight: '600', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
+                                    {summary.salon_name}
+                                </div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '700', color: 'var(--color-success)', marginBottom: 'var(--space-2)' }}>
+                                    {formatCurrency(parseFloat(summary.total_vat_recoverable || 0))}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                    TVA récupérable
+                                </div>
+                                <div style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border)' }}>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                                        Montant HT: {formatCurrency(parseFloat(summary.total_ht_with_vat || 0))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {!filterSalon && vatSummary.length > 1 && (
+                            <div className="card" style={{ padding: 'var(--space-4)', backgroundColor: 'var(--color-success)', color: 'white' }}>
+                                <div style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: 'var(--space-2)' }}>
+                                    TOTAL - 3 Salons
+                                </div>
+                                <div style={{ fontSize: '2rem', fontWeight: '700', marginBottom: 'var(--space-2)' }}>
+                                    {formatCurrency(vatSummary.reduce((sum, s) => sum + parseFloat(s.total_vat_recoverable || 0), 0))}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>
+                                    TVA récupérable totale
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Filters + Category breakdown */}
             <div className="grid grid-cols-3" style={{ marginBottom: 'var(--space-6)' }}>
@@ -716,16 +834,85 @@ const Expenses = () => {
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">Montant (€) *</label>
+                        <label className="form-label">Montant TTC (€) *</label>
                         <input
                             type="number"
                             className="form-input"
                             value={variableFormData.amount}
-                            onChange={(e) => setVariableFormData({ ...variableFormData, amount: e.target.value })}
+                            onChange={(e) => {
+                                const ttc = parseFloat(e.target.value) || 0;
+                                const vatRate = parseFloat(variableFormData.vat_rate) || 0;
+                                const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                const vatAmount = ttc - ht;
+                                setVariableFormData({ 
+                                    ...variableFormData, 
+                                    amount: e.target.value,
+                                    amount_ht: ht.toFixed(2),
+                                    vat_amount: vatAmount.toFixed(2)
+                                });
+                            }}
                             min="0"
                             step="0.01"
                             required
                         />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                        <div className="form-group">
+                            <label className="form-label">Taux de TVA (%)</label>
+                            <select
+                                className="form-select"
+                                value={variableFormData.vat_rate}
+                                onChange={(e) => {
+                                    const vatRate = parseFloat(e.target.value) || 0;
+                                    const ttc = parseFloat(variableFormData.amount) || 0;
+                                    const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                    const vatAmount = ttc - ht;
+                                    setVariableFormData({ 
+                                        ...variableFormData, 
+                                        vat_rate: e.target.value,
+                                        amount_ht: ht.toFixed(2),
+                                        vat_amount: vatAmount.toFixed(2)
+                                    });
+                                }}
+                            >
+                                <option value="0">0% - Sans TVA</option>
+                                <option value="5.5">5.5% - Taux réduit</option>
+                                <option value="10">10% - Taux intermédiaire</option>
+                                <option value="20">20% - Taux normal</option>
+                            </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">TVA récupérable ?</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                                <input
+                                    type="checkbox"
+                                    id="vat_recoverable"
+                                    checked={variableFormData.vat_recoverable}
+                                    onChange={(e) => setVariableFormData({ ...variableFormData, vat_recoverable: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                />
+                                <label htmlFor="vat_recoverable" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                    Oui, TVA récupérable
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', padding: 'var(--space-3)', backgroundColor: 'var(--color-background)', borderRadius: 'var(--radius-md)' }}>
+                        <div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant HT</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--color-text)' }}>
+                                {parseFloat(variableFormData.amount_ht || 0).toFixed(2)} €
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant TVA</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: '600', color: variableFormData.vat_recoverable ? 'var(--color-success)' : 'var(--color-text)' }}>
+                                {parseFloat(variableFormData.vat_amount || 0).toFixed(2)} €
+                            </div>
+                        </div>
                     </div>
 
                     <div className="form-group">
@@ -800,30 +987,100 @@ const Expenses = () => {
                     </div>
 
                     {!editing && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                        <>
                             <div className="form-group">
-                                <label className="form-label">Montant mensuel (€) *</label>
+                                <label className="form-label">Montant TTC mensuel (€) *</label>
                                 <input
                                     type="number"
                                     className="form-input"
                                     value={fixedFormData.amount}
-                                    onChange={(e) => setFixedFormData({ ...fixedFormData, amount: e.target.value })}
+                                    onChange={(e) => {
+                                        const ttc = parseFloat(e.target.value) || 0;
+                                        const vatRate = parseFloat(fixedFormData.vat_rate) || 0;
+                                        const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                        const vatAmount = ttc - ht;
+                                        setFixedFormData({ 
+                                            ...fixedFormData, 
+                                            amount: e.target.value,
+                                            amount_ht: ht.toFixed(2),
+                                            vat_amount: vatAmount.toFixed(2)
+                                        });
+                                    }}
                                     min="0"
                                     step="0.01"
                                     required
                                 />
                             </div>
-                            <div className="form-group">
-                                <label className="form-label">Applicable à partir de *</label>
-                                <input
-                                    type="date"
-                                    className="form-input"
-                                    value={fixedFormData.effective_from}
-                                    onChange={(e) => setFixedFormData({ ...fixedFormData, effective_from: e.target.value })}
-                                    required
-                                />
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                                <div className="form-group">
+                                    <label className="form-label">Taux de TVA (%)</label>
+                                    <select
+                                        className="form-select"
+                                        value={fixedFormData.vat_rate}
+                                        onChange={(e) => {
+                                            const vatRate = parseFloat(e.target.value) || 0;
+                                            const ttc = parseFloat(fixedFormData.amount) || 0;
+                                            const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                            const vatAmount = ttc - ht;
+                                            setFixedFormData({ 
+                                                ...fixedFormData, 
+                                                vat_rate: e.target.value,
+                                                amount_ht: ht.toFixed(2),
+                                                vat_amount: vatAmount.toFixed(2)
+                                            });
+                                        }}
+                                    >
+                                        <option value="0">0% - Sans TVA</option>
+                                        <option value="5.5">5.5% - Taux réduit</option>
+                                        <option value="10">10% - Taux intermédiaire</option>
+                                        <option value="20">20% - Taux normal</option>
+                                    </select>
+                                </div>
+
+                                <div className="form-group">
+                                    <label className="form-label">TVA récupérable ?</label>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                                        <input
+                                            type="checkbox"
+                                            id="fixed_vat_recoverable"
+                                            checked={fixedFormData.vat_recoverable}
+                                            onChange={(e) => setFixedFormData({ ...fixedFormData, vat_recoverable: e.target.checked })}
+                                            style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                        />
+                                        <label htmlFor="fixed_vat_recoverable" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                            Oui, TVA récupérable
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', padding: 'var(--space-3)', backgroundColor: 'var(--color-background)', borderRadius: 'var(--radius-md)' }}>
+                                <div>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant HT</div>
+                                    <div style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--color-text)' }}>
+                                        {parseFloat(fixedFormData.amount_ht || 0).toFixed(2)} €
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant TVA</div>
+                                    <div style={{ fontSize: '1.125rem', fontWeight: '600', color: fixedFormData.vat_recoverable ? 'var(--color-success)' : 'var(--color-text)' }}>
+                                        {parseFloat(fixedFormData.vat_amount || 0).toFixed(2)} €
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Applicable du</div>
+                                    <input
+                                        type="date"
+                                        className="form-input"
+                                        value={fixedFormData.effective_from}
+                                        onChange={(e) => setFixedFormData({ ...fixedFormData, effective_from: e.target.value })}
+                                        required
+                                        style={{ marginTop: 'var(--space-1)' }}
+                                    />
+                                </div>
+                            </div>
+                        </>
                     )}
 
                     <div className="form-group">
@@ -882,16 +1139,85 @@ const Expenses = () => {
                     )}
 
                     <div className="form-group">
-                        <label className="form-label">Nouveau montant (€) *</label>
+                        <label className="form-label">Nouveau montant TTC (€) *</label>
                         <input
                             type="number"
                             className="form-input"
                             value={amountFormData.amount}
-                            onChange={(e) => setAmountFormData({ ...amountFormData, amount: e.target.value })}
+                            onChange={(e) => {
+                                const ttc = parseFloat(e.target.value) || 0;
+                                const vatRate = parseFloat(amountFormData.vat_rate) || 0;
+                                const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                const vatAmount = ttc - ht;
+                                setAmountFormData({ 
+                                    ...amountFormData, 
+                                    amount: e.target.value,
+                                    amount_ht: ht.toFixed(2),
+                                    vat_amount: vatAmount.toFixed(2)
+                                });
+                            }}
                             min="0"
                             step="0.01"
                             required
                         />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                        <div className="form-group">
+                            <label className="form-label">Taux de TVA (%)</label>
+                            <select
+                                className="form-select"
+                                value={amountFormData.vat_rate}
+                                onChange={(e) => {
+                                    const vatRate = parseFloat(e.target.value) || 0;
+                                    const ttc = parseFloat(amountFormData.amount) || 0;
+                                    const ht = vatRate > 0 ? ttc / (1 + vatRate / 100) : ttc;
+                                    const vatAmount = ttc - ht;
+                                    setAmountFormData({ 
+                                        ...amountFormData, 
+                                        vat_rate: e.target.value,
+                                        amount_ht: ht.toFixed(2),
+                                        vat_amount: vatAmount.toFixed(2)
+                                    });
+                                }}
+                            >
+                                <option value="0">0% - Sans TVA</option>
+                                <option value="5.5">5.5% - Taux réduit</option>
+                                <option value="10">10% - Taux intermédiaire</option>
+                                <option value="20">20% - Taux normal</option>
+                            </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">TVA récupérable ?</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                                <input
+                                    type="checkbox"
+                                    id="amount_vat_recoverable"
+                                    checked={amountFormData.vat_recoverable}
+                                    onChange={(e) => setAmountFormData({ ...amountFormData, vat_recoverable: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                                />
+                                <label htmlFor="amount_vat_recoverable" style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                    Oui, TVA récupérable
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', padding: 'var(--space-3)', backgroundColor: 'var(--color-background)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-4)' }}>
+                        <div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant HT</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: '600', color: 'var(--color-text)' }}>
+                                {parseFloat(amountFormData.amount_ht || 0).toFixed(2)} €
+                            </div>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Montant TVA</div>
+                            <div style={{ fontSize: '1.125rem', fontWeight: '600', color: amountFormData.vat_recoverable ? 'var(--color-success)' : 'var(--color-text)' }}>
+                                {parseFloat(amountFormData.vat_amount || 0).toFixed(2)} €
+                            </div>
+                        </div>
                     </div>
 
                     <div className="form-group">
