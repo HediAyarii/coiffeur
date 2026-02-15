@@ -2603,6 +2603,49 @@ a:hover {
   font-weight: 600;
 }
 
+/* Month Navigation */
+.mobile-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.month-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  color: var(--color-text);
+  transition: all 0.2s ease;
+}
+
+.month-nav-btn:hover:not(:disabled) {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.month-nav-btn:disabled {
+  cursor: not-allowed;
+}
+
+.month-nav-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: capitalize;
+  min-width: 140px;
+  text-align: center;
+}
+
 /* Earnings Highlight */
 .mobile-earnings-highlight {
   background: linear-gradient(135deg, var(--color-gold-50), var(--color-primary-50));

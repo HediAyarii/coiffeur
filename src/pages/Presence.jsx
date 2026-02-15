@@ -47,10 +47,9 @@ const Presence = () => {
     // Form state
     const [serviceForm, setServiceForm] = useState({
         salon_id: '',
-        service_id: '',
         payment_method: 'cash',
         service_date: new Date().toISOString().split('T')[0],
-        quantity: 1
+        selectedServices: {} // { service_id: quantity }
     });
 
     useEffect(() => {
@@ -179,39 +178,72 @@ const Presence = () => {
         setSelectedHairdresser(hairdresser);
         setServiceForm({
             salon_id: filterSalonId || (salons.length > 0 ? salons[0].id : ''),
-            service_id: services.length > 0 ? services[0].id : '',
             payment_method: 'cash',
             service_date: new Date().toISOString().split('T')[0],
-            quantity: 1
+            selectedServices: {}
         });
         setShowServiceModal(true);
+    };
+
+    // Update service quantity in selection
+    const updateServiceQuantity = (serviceId, delta) => {
+        setServiceForm(prev => {
+            const current = prev.selectedServices[serviceId] || 0;
+            const newQty = Math.max(0, current + delta);
+            const newSelected = { ...prev.selectedServices };
+            if (newQty === 0) {
+                delete newSelected[serviceId];
+            } else {
+                newSelected[serviceId] = newQty;
+            }
+            return { ...prev, selectedServices: newSelected };
+        });
+    };
+
+    // Get total counts for selected services
+    const getSelectedServicesTotals = () => {
+        let totalSalon = 0;
+        let totalCoiffeur = 0;
+        let totalCount = 0;
+        Object.entries(serviceForm.selectedServices).forEach(([serviceId, qty]) => {
+            const service = services.find(s => s.id === serviceId);
+            if (service && qty > 0) {
+                totalSalon += service.price_salon * qty;
+                totalCoiffeur += service.price_coiffeur * qty;
+                totalCount += qty;
+            }
+        });
+        return { totalSalon, totalCoiffeur, totalCount };
     };
 
     // Add a service
     const handleAddService = async () => {
         try {
-            const selectedService = services.find(s => s.id === serviceForm.service_id);
-            if (!selectedService || !selectedHairdresser) return;
+            if (!selectedHairdresser || Object.keys(serviceForm.selectedServices).length === 0) return;
 
-            const quantity = parseInt(serviceForm.quantity) || 1;
-            const serviceData = {
-                salon_id: serviceForm.salon_id,
-                hairdresser_id: selectedHairdresser.id,
-                service_id: serviceForm.service_id,
-                service_name: selectedService.name,
-                price_salon: selectedService.price_salon,
-                price_coiffeur: selectedService.price_coiffeur,
-                payment_method: serviceForm.payment_method,
-                service_date_time: new Date(serviceForm.service_date + 'T' + new Date().toTimeString().slice(0, 8)).toISOString()
-            };
-
-            // Create multiple services based on quantity
             const promises = [];
-            for (let i = 0; i < quantity; i++) {
-                promises.push(transactionsAPI.create(serviceData));
-            }
-            await Promise.all(promises);
+            const serviceDateTime = new Date(serviceForm.service_date + 'T' + new Date().toTimeString().slice(0, 8)).toISOString();
 
+            Object.entries(serviceForm.selectedServices).forEach(([serviceId, quantity]) => {
+                const service = services.find(s => s.id === serviceId);
+                if (service && quantity > 0) {
+                    const serviceData = {
+                        salon_id: serviceForm.salon_id,
+                        hairdresser_id: selectedHairdresser.id,
+                        service_id: serviceId,
+                        service_name: service.name,
+                        price_salon: service.price_salon,
+                        price_coiffeur: service.price_coiffeur,
+                        payment_method: serviceForm.payment_method,
+                        service_date_time: serviceDateTime
+                    };
+                    for (let i = 0; i < quantity; i++) {
+                        promises.push(transactionsAPI.create(serviceData));
+                    }
+                }
+            });
+
+            await Promise.all(promises);
             setShowServiceModal(false);
             await loadDailyServices();
         } catch (err) {
@@ -712,7 +744,7 @@ const Presence = () => {
             <Modal
                 isOpen={showServiceModal}
                 onClose={() => setShowServiceModal(false)}
-                title={`Ajouter un service - ${selectedHairdresser?.first_name} ${selectedHairdresser?.last_name}`}
+                title={`Ajouter des services - ${selectedHairdresser?.first_name} ${selectedHairdresser?.last_name}`}
                 footer={
                     <>
                         <button className="btn btn-secondary" onClick={() => setShowServiceModal(false)}>
@@ -721,10 +753,10 @@ const Presence = () => {
                         <button 
                             className="btn btn-primary" 
                             onClick={handleAddService}
-                            disabled={!serviceForm.salon_id || !serviceForm.service_id}
+                            disabled={!serviceForm.salon_id || Object.keys(serviceForm.selectedServices).length === 0}
                         >
                             <Plus size={16} />
-                            Ajouter
+                            Ajouter ({getSelectedServicesTotals().totalCount} services)
                         </button>
                     </>
                 }
@@ -754,52 +786,70 @@ const Presence = () => {
                 </div>
 
                 <div className="form-group">
-                    <label className="form-label">Service *</label>
-                    <select
-                        className="form-select"
-                        value={serviceForm.service_id}
-                        onChange={(e) => setServiceForm({ ...serviceForm, service_id: e.target.value })}
-                    >
-                        <option value="">Sélectionner un service</option>
-                        {services.map(s => (
-                            <option key={s.id} value={s.id}>
-                                {s.name} — Salon: {s.price_salon}€ | Coiffeur: {s.price_coiffeur}€
-                            </option>
-                        ))}
-                    </select>
-                </div>
-
-                <div className="form-group">
-                    <label className="form-label">Quantité</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => setServiceForm({ ...serviceForm, quantity: Math.max(1, (serviceForm.quantity || 1) - 1) })}
-                            style={{ width: 40, height: 40, padding: 0 }}
-                        >
-                            -
-                        </button>
-                        <input
-                            type="number"
-                            className="form-input"
-                            value={serviceForm.quantity}
-                            onChange={(e) => setServiceForm({ ...serviceForm, quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                            min="1"
-                            style={{ width: 80, textAlign: 'center', fontWeight: 600, fontSize: 'var(--font-size-lg)' }}
-                        />
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => setServiceForm({ ...serviceForm, quantity: (serviceForm.quantity || 1) + 1 })}
-                            style={{ width: 40, height: 40, padding: 0 }}
-                        >
-                            +
-                        </button>
+                    <label className="form-label">Services *</label>
+                    <div style={{ 
+                        maxHeight: '250px', 
+                        overflowY: 'auto', 
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: 'var(--space-2)'
+                    }}>
+                        {services.map(s => {
+                            const qty = serviceForm.selectedServices[s.id] || 0;
+                            return (
+                                <div 
+                                    key={s.id} 
+                                    style={{ 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'space-between',
+                                        padding: 'var(--space-3)',
+                                        borderRadius: 'var(--radius-md)',
+                                        background: qty > 0 ? 'var(--color-primary-50)' : 'transparent',
+                                        marginBottom: 'var(--space-2)',
+                                        transition: 'background 0.2s'
+                                    }}
+                                >
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 500, fontSize: 'var(--font-size-sm)' }}>{s.name}</div>
+                                        <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                                            Salon: {s.price_salon}€ | Coiffeur: {s.price_coiffeur}€
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            onClick={() => updateServiceQuantity(s.id, -1)}
+                                            disabled={qty === 0}
+                                            style={{ width: 32, height: 32, padding: 0, fontSize: 'var(--font-size-lg)' }}
+                                        >
+                                            −
+                                        </button>
+                                        <span style={{ 
+                                            width: 32, 
+                                            textAlign: 'center', 
+                                            fontWeight: 600,
+                                            color: qty > 0 ? 'var(--color-primary-500)' : 'var(--color-text-muted)'
+                                        }}>
+                                            {qty}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            onClick={() => updateServiceQuantity(s.id, 1)}
+                                            style={{ width: 32, height: 32, padding: 0, fontSize: 'var(--font-size-lg)' }}
+                                        >
+                                            +
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {serviceForm.service_id && (
+                {Object.keys(serviceForm.selectedServices).length > 0 && (
                     <div style={{
                         padding: 'var(--space-4)',
                         background: 'var(--color-bg-secondary)',
@@ -807,54 +857,35 @@ const Presence = () => {
                         marginBottom: 'var(--space-4)'
                     }}>
                         {(() => {
-                            const selectedService = services.find(s => s.id === serviceForm.service_id);
-                            if (!selectedService) return null;
-                            const qty = serviceForm.quantity || 1;
-                            const totalSalon = selectedService.price_salon * qty;
-                            const totalCoiffeur = selectedService.price_coiffeur * qty;
+                            const totals = getSelectedServicesTotals();
                             return (
                                 <>
+                                    <div style={{ 
+                                        fontSize: 'var(--font-size-sm)', 
+                                        fontWeight: 600, 
+                                        marginBottom: 'var(--space-3)',
+                                        color: 'var(--color-text-muted)'
+                                    }}>
+                                        Résumé ({totals.totalCount} service{totals.totalCount > 1 ? 's' : ''})
+                                    </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                                         <div>
                                             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                                                Prix Salon {qty > 1 ? `(×${qty})` : ''}
+                                                Prix Salon
                                             </div>
                                             <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-success)' }}>
-                                                {totalSalon} €
+                                                {totals.totalSalon} €
                                             </div>
-                                            {qty > 1 && (
-                                                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                                                    {selectedService.price_salon}€ × {qty}
-                                                </div>
-                                            )}
                                         </div>
                                         <div>
                                             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', marginBottom: 4 }}>
-                                                Part Coiffeur {qty > 1 ? `(×${qty})` : ''}
+                                                Part Coiffeur
                                             </div>
                                             <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-accent-400)' }}>
-                                                {totalCoiffeur} €
+                                                {totals.totalCoiffeur} €
                                             </div>
-                                            {qty > 1 && (
-                                                <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                                                    {selectedService.price_coiffeur}€ × {qty}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
-                                    {qty > 1 && (
-                                        <div style={{ 
-                                            marginTop: 'var(--space-3)', 
-                                            padding: 'var(--space-2)', 
-                                            background: 'var(--color-warning-bg)', 
-                                            borderRadius: 'var(--radius-md)',
-                                            textAlign: 'center',
-                                            fontSize: 'var(--font-size-sm)',
-                                            color: 'var(--color-warning)'
-                                        }}>
-                                            {qty} services seront créés
-                                        </div>
-                                    )}
                                 </>
                             );
                         })()}

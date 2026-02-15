@@ -155,6 +155,11 @@ router.post('/', async (req, res) => {
     try {
         const { salon_id, category, name, description, amount, amount_ht, vat_rate, vat_amount, vat_recoverable, effective_from } = req.body;
         
+        // Validation du salon_id
+        if (!salon_id || salon_id === '') {
+            return res.status(400).json({ error: 'salon_id est requis' });
+        }
+        
         await client.query('BEGIN');
 
         // Create the fixed expense

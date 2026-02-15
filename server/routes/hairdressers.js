@@ -114,6 +114,31 @@ router.put('/:id', async (req, res) => {
     }
 });
 
+// Update hairdresser RIB only (for hairdresser's own space)
+router.put('/:id/rib', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rib_1, rib_2 } = req.body;
+        
+        const result = await pool.query(
+            `UPDATE hairdressers 
+             SET rib_1 = $1, rib_2 = $2
+             WHERE id = $3 
+             RETURNING *`,
+            [rib_1 || '', rib_2 || '', id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Coiffeur non trouvé' });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating hairdresser RIB:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 // Delete hairdresser
 router.delete('/:id', async (req, res) => {
     try {

@@ -19,7 +19,8 @@ import {
     FileSpreadsheet,
     ChevronLeft,
     ChevronRight,
-    Calculator
+    Calculator,
+    UserCog
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -54,6 +55,12 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
                 { path: '/payroll', icon: CreditCard, label: 'Paie' },
                 { path: '/reports', icon: BarChart3, label: 'Rapports' },
                 { path: '/synthesis', icon: Calculator, label: 'Synthèse' },
+            ]
+        },
+        {
+            title: 'Administration',
+            items: [
+                { path: '/users', icon: UserCog, label: 'Gestion Comptes' },
             ]
         }
     ];

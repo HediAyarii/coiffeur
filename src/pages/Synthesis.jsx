@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, CreditCard, Wallet, Receipt, RefreshCw, Calculator } from 'lucide-react';
+import { TrendingUp, CreditCard, Wallet, Receipt, RefreshCw, Calculator, PiggyBank, Banknote } from 'lucide-react';
 import { synthesisAPI, salonsAPI } from '../services/api';
 
 const Synthesis = () => {
     const [synthesisData, setSynthesisData] = useState([]);
     const [salons, setSalons] = useState([]);
     const [declaredCash, setDeclaredCash] = useState({});
+    const [beneficeData, setBeneficeData] = useState(null);
     const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -50,6 +51,15 @@ const Synthesis = () => {
                 cashMap[cash.salon_id] = cash;
             });
             setDeclaredCash(cashMap);
+            
+            // Load benefice data
+            try {
+                const benefice = await synthesisAPI.getBenefice(filterMonth);
+                setBeneficeData(benefice);
+            } catch (beneficeErr) {
+                console.error('Error loading benefice:', beneficeErr);
+                setBeneficeData(null);
+            }
         } catch (err) {
             console.error('Error loading synthesis:', err);
             setError('Erreur lors du chargement de la synthèse');
@@ -419,6 +429,156 @@ const Synthesis = () => {
                     </ul>
                 </div>
             </div>
+
+            {/* Synthèse Bénéfice Section */}
+            {beneficeData && (
+                <div className="card" style={{ marginTop: 'var(--space-6)' }}>
+                    <h3 className="card-title" style={{ marginBottom: '1.5rem' }}>
+                        <PiggyBank size={20} style={{ marginRight: 'var(--space-2)' }} />
+                        Synthèse Bénéfice - {filterMonth}
+                    </h3>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 'var(--space-6)' }}>
+                        {/* CB Bénéfice */}
+                        <div style={{ 
+                            background: 'var(--color-bg-secondary)', 
+                            borderRadius: 'var(--radius-lg)', 
+                            padding: 'var(--space-5)',
+                            border: '1px solid var(--color-border)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                                <CreditCard size={20} style={{ color: 'var(--color-info)' }} />
+                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Bénéfice CB</h4>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>Total CB</span>
+                                    <span style={{ fontWeight: 600 }}>{formatCurrency(beneficeData.total_cb)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- TVA CB</span>
+                                    <span>{formatCurrency(beneficeData.tva_cb)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- TVA Espèces</span>
+                                    <span>{formatCurrency(beneficeData.tva_especes)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Salaires par virement</span>
+                                    <span>{formatCurrency(beneficeData.total_virement)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Salaires par chèque</span>
+                                    <span>{formatCurrency(beneficeData.total_cheque)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Charges fixes</span>
+                                    <span>{formatCurrency(beneficeData.charges_fixes)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Charges variables</span>
+                                    <span>{formatCurrency(beneficeData.charges_variables)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Charges entreprise (taxe)</span>
+                                    <span>{formatCurrency(beneficeData.charges_entreprise)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
+                                    <span>+ TVA Récupérable</span>
+                                    <span>{formatCurrency(beneficeData.tva_recuperable)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
+                                    <span>+ Ventes Produits CB</span>
+                                    <span>{formatCurrency(beneficeData.ventes_produits_cb)}</span>
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    paddingTop: 'var(--space-3)',
+                                    marginTop: 'var(--space-2)',
+                                    borderTop: '2px solid var(--color-border)',
+                                    fontWeight: 700,
+                                    fontSize: 'var(--font-size-lg)'
+                                }}>
+                                    <span>= CB Bénéfice</span>
+                                    <span style={{ color: beneficeData.cb_benefice >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                                        {formatCurrency(beneficeData.cb_benefice)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Espèces Bénéfice */}
+                        <div style={{ 
+                            background: 'var(--color-bg-secondary)', 
+                            borderRadius: 'var(--radius-lg)', 
+                            padding: 'var(--space-5)',
+                            border: '1px solid var(--color-border)'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                                <Banknote size={20} style={{ color: 'var(--color-warning)' }} />
+                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Bénéfice Espèces</h4>
+                            </div>
+                            
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span>Total Espèces</span>
+                                    <span style={{ fontWeight: 600 }}>{formatCurrency(beneficeData.total_cash)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Espèces déclaré</span>
+                                    <span>{formatCurrency(beneficeData.total_declared)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Reste à payer espèce</span>
+                                    <span>{formatCurrency(beneficeData.total_salaires_especes)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
+                                    <span>+ Ventes Produits Espèces</span>
+                                    <span>{formatCurrency(beneficeData.ventes_produits_especes)}</span>
+                                </div>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    paddingTop: 'var(--space-3)',
+                                    marginTop: 'var(--space-2)',
+                                    borderTop: '2px solid var(--color-border)',
+                                    fontWeight: 700,
+                                    fontSize: 'var(--font-size-lg)'
+                                }}>
+                                    <span>= Espèces Bénéfice</span>
+                                    <span style={{ color: beneficeData.espece_benefice >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
+                                        {formatCurrency(beneficeData.espece_benefice)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Total Bénéfice */}
+                    <div style={{ 
+                        marginTop: 'var(--space-5)',
+                        padding: 'var(--space-4)',
+                        background: 'linear-gradient(135deg, var(--color-primary-500), var(--color-accent-500))',
+                        borderRadius: 'var(--radius-lg)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                    }}>
+                        <span style={{ color: 'white', fontWeight: 600, fontSize: 'var(--font-size-lg)' }}>
+                            BÉNÉFICE TOTAL
+                        </span>
+                        <span style={{ 
+                            color: 'white', 
+                            fontWeight: 700, 
+                            fontSize: 'var(--font-size-2xl)'
+                        }}>
+                            {formatCurrency(beneficeData.cb_benefice + beneficeData.espece_benefice)}
+                        </span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -105,11 +105,16 @@ const Reports = () => {
         setError(null);
         
         try {
-            // Get dashboard stats
-            const dashboardData = await analyticsAPI.getDashboard();
+            const [year, monthNum] = selectedMonth.split('-');
+            
+            // Build filter params for all API calls
+            const baseFilters = { month: selectedMonth };
+            if (selectedSalon) baseFilters.salon_id = selectedSalon;
+            
+            // Get dashboard stats with filters
+            const dashboardData = await analyticsAPI.getDashboard(baseFilters);
             
             // Load expenses for the period
-            const [year, month] = selectedMonth.split('-');
             let totalExpenses = 0;
             let fixedTotal = 0;
             let variableTotal = 0;
@@ -135,9 +140,12 @@ const Reports = () => {
                 variableTotal = vars.filter(e => e.type === 'variable')
                     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
 
-                // Salary costs
+                // Salary costs - use numeric month and year
                 try {
-                    const salaries = await salaryCostsAPI.getAll({ month: selectedMonth });
+                    const salaries = await salaryCostsAPI.getAll({ 
+                        month: parseInt(monthNum), 
+                        year: parseInt(year) 
+                    });
                     salariesTotal = salaries.reduce((sum, s) => sum + parseFloat(s.total_cost || 0), 0);
                 } catch (e) {
                     console.log('Salary costs not available');
@@ -150,13 +158,9 @@ const Reports = () => {
 
             setExpensesData({ fixed: fixedTotal, variable: variableTotal, salaries: salariesTotal });
 
-            // Calculate period revenue
-            let periodRevenue = dashboardData.monthRevenue || 0;
-            if (period === 'week') {
-                periodRevenue = dashboardData.weekRevenue || 0;
-            } else if (period === 'year') {
-                periodRevenue = dashboardData.yearRevenue || dashboardData.monthRevenue * 12 || 0;
-            }
+            // Calculate period revenue from dashboard data
+            const periodRevenue = dashboardData.monthRevenue || 0;
+            const monthServices = dashboardData.monthServices || 0;
 
             const netProfit = periodRevenue - totalExpenses;
             const profitMargin = periodRevenue > 0 ? (netProfit / periodRevenue) * 100 : 0;
@@ -165,29 +169,25 @@ const Reports = () => {
                 totalRevenue: periodRevenue,
                 totalExpenses,
                 netProfit,
-                totalServices: dashboardData.todayServices || 0,
-                avgTicket: dashboardData.avgTicket || (dashboardData.todayServices > 0 ? periodRevenue / dashboardData.todayServices : 0),
+                totalServices: monthServices,
+                avgTicket: dashboardData.avgTicket || (monthServices > 0 ? periodRevenue / monthServices : 0),
                 profitMargin
             });
 
-            // Revenue over time
-            let days = 30;
-            if (period === 'week') days = 7;
-            else if (period === 'year') days = 365;
-            
-            const dailyRevenue = await analyticsAPI.getDailyRevenue(days);
+            // Revenue over time (daily for selected month)
+            const dailyRevenue = await analyticsAPI.getDailyRevenue(baseFilters);
             setRevenueData(dailyRevenue);
 
             // Revenue by salon
-            const salonRevenue = await analyticsAPI.getRevenueBySalon(period);
+            const salonRevenue = await analyticsAPI.getRevenueBySalon({ month: selectedMonth });
             setSalonData(salonRevenue.filter(s => s.revenue > 0));
 
             // Service breakdown
-            const breakdown = await analyticsAPI.getServiceBreakdown(period);
+            const breakdown = await analyticsAPI.getServiceBreakdown(baseFilters);
             setServiceData(breakdown.slice(0, 8));
 
             // Payment methods
-            const pmStats = await analyticsAPI.getPaymentMethods(period);
+            const pmStats = await analyticsAPI.getPaymentMethods(baseFilters);
             const cashTotal = pmStats.cash?.total || 0;
             const cardTotal = pmStats.card?.total || 0;
             const total = cashTotal + cardTotal;
@@ -207,24 +207,14 @@ const Reports = () => {
             ]);
 
             // Top hairdressers
-            const topHd = await analyticsAPI.getTopHairdressers(5, period);
+            const topHdFilters = { limit: 5, ...baseFilters };
+            const topHd = await analyticsAPI.getTopHairdressers(topHdFilters);
             setTopHairdressers(topHd);
 
-            // Monthly comparison for trend
-            const comparisonData = [];
-            for (let i = 5; i >= 0; i--) {
-                const d = new Date();
-                d.setMonth(d.getMonth() - i);
-                const monthLabel = d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
-                // Simulate data - in production, fetch from API
-                comparisonData.push({
-                    month: monthLabel,
-                    revenue: Math.random() * 50000 + 30000,
-                    expenses: Math.random() * 20000 + 15000,
-                    profit: 0
-                });
-            }
-            comparisonData.forEach(d => d.profit = d.revenue - d.expenses);
+            // Monthly comparison for trend (real data)
+            const comparisonFilters = { months: 6 };
+            if (selectedSalon) comparisonFilters.salon_id = selectedSalon;
+            const comparisonData = await analyticsAPI.getMonthlyComparison(comparisonFilters);
             setMonthlyComparison(comparisonData);
 
         } catch (err) {

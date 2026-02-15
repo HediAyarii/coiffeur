@@ -18,10 +18,12 @@ import {
     CreditCard,
     Plus,
     History,
-    Banknote
+    Banknote,
+    Wrench,
+    Edit2
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
-import { salaryCostsAPI, hairdressersAPI, salaryPaymentsAPI } from '../services/api';
+import { salaryCostsAPI, hairdressersAPI, salaryPaymentsAPI, equipmentPurchasesAPI } from '../services/api';
 
 const SalaryCosts = () => {
     // Data states
@@ -55,6 +57,19 @@ const SalaryCosts = () => {
         payment_method: 'virement',
         notes: ''
     });
+
+    // Equipment purchase states
+    const [showEquipmentModal, setShowEquipmentModal] = useState(false);
+    const [equipmentPurchases, setEquipmentPurchases] = useState([]);
+    const [equipmentTotals, setEquipmentTotals] = useState({});
+    const [equipmentForm, setEquipmentForm] = useState({
+        hairdresser_id: '',
+        description: '',
+        amount: '',
+        purchase_date: new Date().toISOString().split('T')[0],
+        notes: ''
+    });
+    const [editingEquipment, setEditingEquipment] = useState(null);
 
     const fileInputRef = useRef(null);
 
@@ -106,6 +121,18 @@ const SalaryCosts = () => {
                 const totals = await salaryPaymentsAPI.getTotals(ids);
                 setPaymentTotals(totals);
             }
+
+            // Load equipment purchases totals
+            const equipData = await equipmentPurchasesAPI.getAll({ 
+                month: selectedMonth, 
+                year: selectedYear 
+            });
+            const equipTotals = {};
+            equipData.forEach(eq => {
+                if (!equipTotals[eq.hairdresser_id]) equipTotals[eq.hairdresser_id] = 0;
+                equipTotals[eq.hairdresser_id] += parseFloat(eq.amount) || 0;
+            });
+            setEquipmentTotals(equipTotals);
         } catch (err) {
             console.error('Error loading salary costs:', err);
         }
@@ -174,6 +201,106 @@ const SalaryCosts = () => {
         }
     };
 
+    // Equipment purchase functions
+    const loadEquipmentPurchases = async () => {
+        try {
+            const data = await equipmentPurchasesAPI.getAll({ 
+                month: selectedMonth, 
+                year: selectedYear 
+            });
+            setEquipmentPurchases(data);
+            
+            // Calculate totals by hairdresser
+            const totals = {};
+            data.forEach(eq => {
+                if (!totals[eq.hairdresser_id]) totals[eq.hairdresser_id] = 0;
+                totals[eq.hairdresser_id] += parseFloat(eq.amount) || 0;
+            });
+            setEquipmentTotals(totals);
+        } catch (err) {
+            console.error('Error loading equipment purchases:', err);
+        }
+    };
+
+    const openEquipmentModal = () => {
+        setEquipmentForm({
+            hairdresser_id: '',
+            description: '',
+            amount: '',
+            purchase_date: new Date().toISOString().split('T')[0],
+            notes: ''
+        });
+        setEditingEquipment(null);
+        loadEquipmentPurchases();
+        setShowEquipmentModal(true);
+    };
+
+    const handleSaveEquipment = async () => {
+        if (!equipmentForm.hairdresser_id || !equipmentForm.description || !equipmentForm.amount) {
+            setError('Veuillez remplir tous les champs obligatoires');
+            return;
+        }
+
+        try {
+            const data = {
+                hairdresser_id: equipmentForm.hairdresser_id,
+                description: equipmentForm.description,
+                amount: parseFloat(equipmentForm.amount),
+                purchase_date: equipmentForm.purchase_date,
+                month: selectedMonth,
+                year: selectedYear,
+                notes: equipmentForm.notes
+            };
+
+            if (editingEquipment) {
+                await equipmentPurchasesAPI.update(editingEquipment.id, data);
+                setSuccess('Achat modifié avec succès');
+            } else {
+                await equipmentPurchasesAPI.create(data);
+                setSuccess('Achat enregistré avec succès');
+            }
+
+            setEquipmentForm({
+                hairdresser_id: '',
+                description: '',
+                amount: '',
+                purchase_date: new Date().toISOString().split('T')[0],
+                notes: ''
+            });
+            setEditingEquipment(null);
+            await loadEquipmentPurchases();
+            await loadSalaryCosts();
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            setError('Erreur lors de l\'enregistrement');
+        }
+    };
+
+    const handleEditEquipment = (equipment) => {
+        setEquipmentForm({
+            hairdresser_id: equipment.hairdresser_id,
+            description: equipment.description,
+            amount: equipment.amount.toString(),
+            purchase_date: equipment.purchase_date.split('T')[0],
+            notes: equipment.notes || ''
+        });
+        setEditingEquipment(equipment);
+    };
+
+    const handleDeleteEquipment = async (id) => {
+        if (!confirm('Supprimer cet achat ?')) return;
+
+        try {
+            await equipmentPurchasesAPI.delete(id);
+            await loadEquipmentPurchases();
+            await loadSalaryCosts();
+            setSuccess('Achat supprimé');
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            setError('Erreur lors de la suppression');
+        }
+    };
+
     const parseCSV = (text) => {
         const lines = text.trim().split('\n');
         if (lines.length < 2) return [];
@@ -221,6 +348,12 @@ const SalaryCosts = () => {
                     row[header] = value;
                 });
                 if (row.last_name && row.first_name) {
+                    // Auto-calculate charges if not provided or empty
+                    const totalCost = parseFloat(row.total_cost) || 0;
+                    const netSalary = parseFloat(row.net_salary) || 0;
+                    if (!row.charges || row.charges === '' || parseFloat(row.charges) === 0) {
+                        row.charges = (totalCost - netSalary).toFixed(2);
+                    }
                     data.push(row);
                 }
             }
@@ -259,7 +392,12 @@ const SalaryCosts = () => {
                 data: csvPreview
             });
 
-            setSuccess(`${result.imported} salaires importés avec succès pour ${monthNames[selectedMonth - 1]} ${selectedYear}`);
+            let successMsg = `${result.imported} salaires importés`;
+            if (result.addedFromServices > 0) {
+                successMsg += ` + ${result.addedFromServices} coiffeurs ajoutés (travail sans fiche de paie)`;
+            }
+            successMsg += ` pour ${monthNames[selectedMonth - 1]} ${selectedYear}`;
+            setSuccess(successMsg);
             setShowImportModal(false);
             setCsvPreview([]);
             await loadSalaryCosts();
@@ -425,6 +563,25 @@ const SalaryCosts = () => {
             }
         },
         {
+            key: 'equipment_deduction',
+            header: 'Matériel',
+            render: (row) => {
+                const equipTotal = equipmentTotals[row.hairdresser_id] || 0;
+                if (equipTotal === 0) return <span style={{ color: 'var(--color-text-muted)' }}>-</span>;
+                return (
+                    <span style={{ 
+                        fontWeight: 600, 
+                        color: 'var(--color-error)',
+                        background: 'var(--color-error-bg)',
+                        padding: '2px 6px',
+                        borderRadius: 'var(--radius-sm)'
+                    }}>
+                        -{formatCurrency(equipTotal)}
+                    </span>
+                );
+            }
+        },
+        {
             key: 'reste_a_payer',
             header: 'Reste à Payer',
             render: (row) => {
@@ -433,6 +590,7 @@ const SalaryCosts = () => {
                 const generatedRevenue = parseFloat(row.generated_revenue) || 0;
                 const netSalary = parseFloat(row.net_salary) || 0;
                 const totalPaid = paymentTotals[row.id] || 0;
+                const equipDeduction = equipmentTotals[row.hairdresser_id] || 0;
                 
                 // Calcul de la charge technicien
                 let chargeTechnicien = 0;
@@ -446,8 +604,8 @@ const SalaryCosts = () => {
                     chargeTechnicien = charges * (1 - taxPercent / 100);
                 }
                 
-                // Reste à payer = Recette Générée - Charge Technicien - Salaire Net - Paiements effectués
-                const resteAPayer = Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid);
+                // Reste à payer = Recette Générée - Charge Technicien - Salaire Net - Paiements effectués - Matériel
+                const resteAPayer = Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction);
                 
                 return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -561,6 +719,13 @@ const SalaryCosts = () => {
                     <p className="page-subtitle">Importez et gérez les coûts salariaux mensuels</p>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                    <button 
+                        className="btn btn-secondary"
+                        onClick={openEquipmentModal}
+                    >
+                        <Wrench size={18} />
+                        Achats Matériel
+                    </button>
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -675,6 +840,22 @@ const SalaryCosts = () => {
                         <div className="stat-content">
                             <div className="stat-value">{formatCurrency(summary.total_cost)}</div>
                             <div className="stat-label">Coût Total</div>
+                        </div>
+                    </div>
+
+                    <div className="stat-card">
+                        <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+                            <Banknote size={24} style={{ color: 'var(--color-warning)' }} />
+                        </div>
+                        <div className="stat-content">
+                            <div className="stat-value">{formatCurrency(
+                                salaryCosts.reduce((acc, row) => {
+                                    const charges = parseFloat(row.charges) || 0;
+                                    const taxPercent = parseFloat(row.tax_percentage) || 0;
+                                    return acc + (charges * taxPercent / 100);
+                                }, 0)
+                            )}</div>
+                            <div className="stat-label">Charges Entreprise</div>
                         </div>
                     </div>
                 </div>
@@ -1012,6 +1193,196 @@ const SalaryCosts = () => {
                     <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
                         <History size={48} style={{ opacity: 0.3, marginBottom: 'var(--space-4)' }} />
                         <p>Aucun paiement enregistré</p>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Equipment Purchases Modal */}
+            <Modal
+                isOpen={showEquipmentModal}
+                onClose={() => setShowEquipmentModal(false)}
+                title={`Achats Matériel - ${monthNames[selectedMonth - 1]} ${selectedYear}`}
+                size="large"
+            >
+                {/* Add Equipment Form */}
+                <div style={{ 
+                    padding: 'var(--space-4)', 
+                    background: 'var(--color-bg-secondary)', 
+                    borderRadius: 'var(--radius-lg)',
+                    marginBottom: 'var(--space-4)'
+                }}>
+                    <h4 style={{ marginBottom: 'var(--space-3)', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                        {editingEquipment ? 'Modifier l\'achat' : 'Nouvel achat de matériel'}
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-3)' }}>
+                        <div>
+                            <label className="form-label">Coiffeur *</label>
+                            <select
+                                className="form-select"
+                                value={equipmentForm.hairdresser_id}
+                                onChange={(e) => setEquipmentForm({ ...equipmentForm, hairdresser_id: e.target.value })}
+                            >
+                                <option value="">Sélectionner un coiffeur</option>
+                                {hairdressers.map(h => (
+                                    <option key={h.id} value={h.id}>{h.first_name} {h.last_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="form-label">Description *</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Ex: Tondeuse, Ciseaux..."
+                                value={equipmentForm.description}
+                                onChange={(e) => setEquipmentForm({ ...equipmentForm, description: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Montant (€) *</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={equipmentForm.amount}
+                                onChange={(e) => setEquipmentForm({ ...equipmentForm, amount: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">Date d'achat</label>
+                            <input
+                                type="date"
+                                className="form-input"
+                                value={equipmentForm.purchase_date}
+                                onChange={(e) => setEquipmentForm({ ...equipmentForm, purchase_date: e.target.value })}
+                            />
+                        </div>
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <label className="form-label">Notes</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Notes optionnelles..."
+                                value={equipmentForm.notes}
+                                onChange={(e) => setEquipmentForm({ ...equipmentForm, notes: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+                        <button className="btn btn-primary" onClick={handleSaveEquipment}>
+                            {editingEquipment ? 'Modifier' : 'Ajouter'}
+                        </button>
+                        {editingEquipment && (
+                            <button className="btn btn-ghost" onClick={() => {
+                                setEditingEquipment(null);
+                                setEquipmentForm({
+                                    hairdresser_id: '',
+                                    description: '',
+                                    amount: '',
+                                    purchase_date: new Date().toISOString().split('T')[0],
+                                    notes: ''
+                                });
+                            }}>
+                                Annuler
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Equipment List */}
+                {equipmentPurchases.length > 0 ? (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ background: 'var(--color-bg-secondary)' }}>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'left' }}>Coiffeur</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'left' }}>Description</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'left' }}>Date</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Montant</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'left' }}>Notes</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'center' }}>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {equipmentPurchases.map((eq) => {
+                                    const hairdresser = hairdressers.find(h => h.id === eq.hairdresser_id);
+                                    return (
+                                        <tr key={eq.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                                            <td style={{ padding: 'var(--space-3)' }}>
+                                                {hairdresser ? `${hairdresser.first_name} ${hairdresser.last_name}` : '—'}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', fontWeight: 500 }}>
+                                                {eq.description}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)' }}>
+                                                {new Date(eq.purchase_date).toLocaleDateString('fr-FR')}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'right', fontWeight: 600, color: 'var(--color-error)' }}>
+                                                {formatCurrency(eq.amount)}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', color: 'var(--color-text-muted)', fontSize: 'var(--font-size-sm)' }}>
+                                                {eq.notes || '—'}
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', gap: 'var(--space-1)', justifyContent: 'center' }}>
+                                                    <button
+                                                        className="btn btn-sm"
+                                                        style={{ 
+                                                            padding: '4px 8px', 
+                                                            background: 'var(--color-primary-bg)', 
+                                                            color: 'var(--color-primary-500)',
+                                                            border: 'none',
+                                                            borderRadius: 'var(--radius-md)',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        onClick={() => handleEditEquipment(eq)}
+                                                        title="Modifier"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm"
+                                                        style={{ 
+                                                            padding: '4px 8px', 
+                                                            background: 'var(--color-error-bg)', 
+                                                            color: 'var(--color-error)',
+                                                            border: 'none',
+                                                            borderRadius: 'var(--radius-md)',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        onClick={() => handleDeleteEquipment(eq.id)}
+                                                        title="Supprimer"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div style={{ 
+                            marginTop: 'var(--space-3)', 
+                            padding: 'var(--space-3)', 
+                            background: 'var(--color-bg-secondary)',
+                            borderRadius: 'var(--radius-md)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontWeight: 600
+                        }}>
+                            <span>Total des achats</span>
+                            <span style={{ color: 'var(--color-error)' }}>
+                                {formatCurrency(equipmentPurchases.reduce((sum, eq) => sum + parseFloat(eq.amount), 0))}
+                            </span>
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
+                        <Wrench size={48} style={{ opacity: 0.3, marginBottom: 'var(--space-4)' }} />
+                        <p>Aucun achat de matériel pour ce mois</p>
                     </div>
                 )}
             </Modal>

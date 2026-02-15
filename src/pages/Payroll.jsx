@@ -22,7 +22,7 @@ import {
     Clock
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
-import { salaryCostsAPI, salaryPaymentsAPI } from '../services/api';
+import { salaryCostsAPI, salaryPaymentsAPI, equipmentPurchasesAPI } from '../services/api';
 
 const Payroll = () => {
     // Data states
@@ -51,6 +51,9 @@ const Payroll = () => {
         payment_method: 'virement',
         notes: ''
     });
+
+    // Equipment deductions
+    const [equipmentTotals, setEquipmentTotals] = useState({});
 
     const monthNames = [
         'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -94,6 +97,18 @@ const Payroll = () => {
             } else {
                 setPaymentTotals({});
             }
+
+            // Load equipment purchases totals
+            const equipData = await equipmentPurchasesAPI.getAll({ 
+                month: selectedMonth, 
+                year: selectedYear 
+            });
+            const equipTotals = {};
+            equipData.forEach(eq => {
+                if (!equipTotals[eq.hairdresser_id]) equipTotals[eq.hairdresser_id] = 0;
+                equipTotals[eq.hairdresser_id] += parseFloat(eq.amount) || 0;
+            });
+            setEquipmentTotals(equipTotals);
         } catch (err) {
             console.error('Error loading salary costs:', err);
         }
@@ -113,6 +128,7 @@ const Payroll = () => {
         const generatedRevenue = parseFloat(row.generated_revenue) || 0;
         const netSalary = parseFloat(row.net_salary) || 0;
         const totalPaid = paymentTotals[row.id] || 0;
+        const equipDeduction = equipmentTotals[row.hairdresser_id] || 0;
         
         let chargeTechnicien = 0;
         if (taxPercent === 0) {
@@ -125,7 +141,7 @@ const Payroll = () => {
             chargeTechnicien = charges * (1 - taxPercent / 100);
         }
         
-        return Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid);
+        return Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction);
     };
 
     // Get payment status
@@ -452,6 +468,7 @@ const Payroll = () => {
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Recette Générée</th>
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Salaire Net</th>
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Déjà Payé</th>
+                                    <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Matériel</th>
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'right' }}>Reste à Payer</th>
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'center' }}>Statut</th>
                                     <th style={{ padding: 'var(--space-3)', textAlign: 'center' }}>Actions</th>
@@ -488,6 +505,21 @@ const Payroll = () => {
                                                 }}>
                                                     {formatCurrency(totalPaid)}
                                                 </span>
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
+                                                {equipmentTotals[row.hairdresser_id] > 0 ? (
+                                                    <span style={{ 
+                                                        fontWeight: 600, 
+                                                        color: 'var(--color-error)',
+                                                        background: 'var(--color-error-bg)',
+                                                        padding: '2px 6px',
+                                                        borderRadius: 'var(--radius-sm)'
+                                                    }}>
+                                                        -{formatCurrency(equipmentTotals[row.hairdresser_id])}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--color-text-muted)' }}>-</span>
+                                                )}
                                             </td>
                                             <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
                                                 <span style={{ 

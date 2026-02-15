@@ -124,4 +124,215 @@ router.post('/declared-cash', async (req, res) => {
     }
 });
 
+// Get benefice synthesis for a specific month
+router.get('/benefice', async (req, res) => {
+    try {
+        const { month } = req.query; // Format: YYYY-MM
+        if (!month) {
+            return res.status(400).json({ error: 'Month parameter is required (YYYY-MM)' });
+        }
+        
+        const [year, monthNum] = month.split('-').map(Number);
+        const targetDate = `${month}-01`;
+        
+        // 1. Get CA totals (CB and Cash)
+        const caResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN price_salon ELSE 0 END), 0) as total_cash,
+                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN price_salon ELSE 0 END), 0) as total_cb
+            FROM service_history
+            WHERE TO_CHAR(service_date_time, 'YYYY-MM') = $1
+        `, [month]);
+        
+        const totalCash = parseFloat(caResult.rows[0].total_cash) || 0;
+        const totalCB = parseFloat(caResult.rows[0].total_cb) || 0;
+        
+        // 2. Calculate TVA CB (20% included in price)
+        const tvaCB = Math.round(totalCB * 0.20 / 1.20 * 100) / 100;
+        
+        // 3. Get declared cash and TVA on declared
+        const declaredResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(declared_amount), 0) as total_declared,
+                COALESCE(SUM(vat_amount), 0) as total_vat_declared
+            FROM declared_cash
+            WHERE month = $1
+        `, [month]);
+        
+        const totalDeclared = parseFloat(declaredResult.rows[0].total_declared) || 0;
+        const tvaEspeces = parseFloat(declaredResult.rows[0].total_vat_declared) || 0;
+        
+        // 4. Get total salary payments by virement AND cheque for this month (based on payment_date, deducted from CB)
+        const virementChequeResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(CASE WHEN sp.payment_method = 'virement' THEN sp.amount ELSE 0 END), 0) as total_virement,
+                COALESCE(SUM(CASE WHEN sp.payment_method = 'cheque' THEN sp.amount ELSE 0 END), 0) as total_cheque
+            FROM salary_payments sp
+            WHERE TO_CHAR(sp.payment_date, 'YYYY-MM') = $1
+              AND sp.payment_method IN ('virement', 'cheque')
+        `, [month]);
+        
+        const totalVirement = parseFloat(virementChequeResult.rows[0].total_virement) || 0;
+        const totalCheque = parseFloat(virementChequeResult.rows[0].total_cheque) || 0;
+        
+        // 4b. Get total salary payments by especes for this month (based on payment_date, deducted from Especes)
+        const especesPaymentResult = await pool.query(`
+            SELECT COALESCE(SUM(sp.amount), 0) as total_especes
+            FROM salary_payments sp
+            WHERE TO_CHAR(sp.payment_date, 'YYYY-MM') = $1
+              AND sp.payment_method = 'especes'
+        `, [month]);
+        
+        const totalSalairesEspeces = parseFloat(especesPaymentResult.rows[0].total_especes) || 0;
+        
+        // 5. Get variable expenses (charges variables)
+        const variableExpensesResult = await pool.query(`
+            SELECT COALESCE(SUM(amount), 0) as total
+            FROM expenses
+            WHERE TO_CHAR(date, 'YYYY-MM') = $1
+        `, [month]);
+        
+        const chargesVariables = parseFloat(variableExpensesResult.rows[0].total) || 0;
+        
+        // 6. Get fixed expenses (charges fixes) for this month
+        const fixedExpensesResult = await pool.query(`
+            SELECT COALESCE(SUM(fea.amount), 0) as total
+            FROM fixed_expenses fe
+            JOIN LATERAL (
+                SELECT amount
+                FROM fixed_expense_amounts
+                WHERE fixed_expense_id = fe.id
+                  AND effective_from <= $1
+                ORDER BY effective_from DESC
+                LIMIT 1
+            ) fea ON true
+            WHERE fe.is_active = true
+        `, [targetDate]);
+        
+        const chargesFixes = parseFloat(fixedExpensesResult.rows[0].total) || 0;
+        
+        // 7. Get charges entreprise (based on tax_percentage)
+        const chargesEntrepriseResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(
+                    sc.charges * COALESCE(h.tax_percentage, 0) / 100
+                ), 0) as total_charges_entreprise
+            FROM salary_costs sc
+            LEFT JOIN hairdressers h ON sc.hairdresser_id = h.id
+            WHERE sc.month = $1 AND sc.year = $2
+        `, [monthNum, year]);
+        
+        const chargesEntreprise = parseFloat(chargesEntrepriseResult.rows[0].total_charges_entreprise) || 0;
+        
+        // 8. Get TVA récupérable (from variable and fixed expenses)
+        const tvaRecuperableResult = await pool.query(`
+            SELECT 
+                COALESCE((
+                    SELECT SUM(vat_amount) 
+                    FROM expenses 
+                    WHERE vat_recoverable = true 
+                      AND TO_CHAR(date, 'YYYY-MM') = $1
+                ), 0) +
+                COALESCE((
+                    SELECT SUM(fea.vat_amount)
+                    FROM fixed_expenses fe
+                    JOIN LATERAL (
+                        SELECT vat_amount, vat_recoverable
+                        FROM fixed_expense_amounts
+                        WHERE fixed_expense_id = fe.id
+                          AND effective_from <= $2
+                        ORDER BY effective_from DESC
+                        LIMIT 1
+                    ) fea ON true
+                    WHERE fe.is_active = true AND fea.vat_recoverable = true
+                ), 0) as total_tva_recuperable
+        `, [month, targetDate]);
+        
+        const tvaRecuperable = parseFloat(tvaRecuperableResult.rows[0].total_tva_recuperable) || 0;
+        
+        // 9. Get product sales by payment method (using HT = total_price - vat_amount) - only actual sales, not internal use
+        const productSalesResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_especes,
+                COALESCE(SUM(CASE WHEN payment_method = 'card' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_cb
+            FROM product_sales
+            WHERE TO_CHAR(sale_date, 'YYYY-MM') = $1
+              AND (sale_type = 'sale' OR sale_type IS NULL)
+        `, [month]);
+        
+        const ventesProduitsEspeces = parseFloat(productSalesResult.rows[0].ventes_produits_especes) || 0;
+        const ventesProduitsCB = parseFloat(productSalesResult.rows[0].ventes_produits_cb) || 0;
+        
+        // 10. Get reste à payer (unpaid salary amounts)
+        const resteAPayerResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(
+                    sc.net_salary 
+                    - (sc.charges * (1 - COALESCE(h.tax_percentage, 0) / 100))
+                    + COALESCE(rev.total_revenue, 0)
+                    - COALESCE(paid.total_paid, 0)
+                ), 0) as total_reste_a_payer
+            FROM salary_costs sc
+            LEFT JOIN hairdressers h ON sc.hairdresser_id = h.id
+            LEFT JOIN (
+                SELECT hairdresser_id, SUM(price_coiffeur) as total_revenue
+                FROM service_history
+                WHERE EXTRACT(MONTH FROM service_date_time) = $1
+                  AND EXTRACT(YEAR FROM service_date_time) = $2
+                GROUP BY hairdresser_id
+            ) rev ON sc.hairdresser_id = rev.hairdresser_id
+            LEFT JOIN (
+                SELECT salary_cost_id, SUM(amount) as total_paid
+                FROM salary_payments
+                GROUP BY salary_cost_id
+            ) paid ON sc.id = paid.salary_cost_id
+            WHERE sc.month = $1 AND sc.year = $2
+        `, [monthNum, year]);
+        
+        // 10b. Get equipment purchases total for the month (to subtract from reste a payer)
+        const equipmentResult = await pool.query(`
+            SELECT COALESCE(SUM(amount), 0) as total_equipment
+            FROM hairdresser_equipment_purchases
+            WHERE month = $1 AND year = $2
+        `, [monthNum, year]);
+        
+        const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
+        
+        const resteAPayer = Math.max(0, (parseFloat(resteAPayerResult.rows[0].total_reste_a_payer) || 0) - totalEquipment);
+        
+        // Calculate benefices
+        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB
+        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB;
+        // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
+        const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
+        
+        res.json({
+            month,
+            // CB data
+            total_cb: totalCB,
+            tva_cb: tvaCB,
+            tva_especes: tvaEspeces,
+            total_virement: totalVirement,
+            total_cheque: totalCheque,
+            charges_fixes: chargesFixes,
+            charges_variables: chargesVariables,
+            charges_entreprise: chargesEntreprise,
+            tva_recuperable: tvaRecuperable,
+            ventes_produits_cb: ventesProduitsCB,
+            cb_benefice: cbBenefice,
+            // Especes data
+            total_cash: totalCash,
+            total_declared: totalDeclared,
+            reste_a_payer: resteAPayer,
+            total_salaires_especes: totalSalairesEspeces,
+            ventes_produits_especes: ventesProduitsEspeces,
+            total_equipment: totalEquipment,
+            espece_benefice: especeBenefice
+        });
+    } catch (error) {
+        console.error('Error fetching benefice:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 export default router;

@@ -443,4 +443,205 @@ router.post('/movement', async (req, res) => {
     }
 });
 
+// ========================================
+// PRODUCT SALES ROUTES
+// ========================================
+
+// Get sales with filters
+router.get('/sales/list', async (req, res) => {
+    try {
+        const { salon_id, month, product_id, limit = 100 } = req.query;
+        
+        let query = `
+            SELECT ps.*, p.name as product_name, p.reference as product_reference,
+                   s.name as salon_name, s.city as salon_city
+            FROM product_sales ps
+            JOIN products p ON ps.product_id = p.id
+            JOIN salons s ON ps.salon_id = s.id
+            WHERE 1=1
+        `;
+        const params = [];
+        let paramIndex = 1;
+        
+        if (salon_id) {
+            query += ` AND ps.salon_id = $${paramIndex}`;
+            params.push(salon_id);
+            paramIndex++;
+        }
+        
+        if (month) {
+            query += ` AND TO_CHAR(ps.sale_date, 'YYYY-MM') = $${paramIndex}`;
+            params.push(month);
+            paramIndex++;
+        }
+        
+        if (product_id) {
+            query += ` AND ps.product_id = $${paramIndex}`;
+            params.push(product_id);
+            paramIndex++;
+        }
+        
+        query += ` ORDER BY ps.sale_date DESC, ps.created_at DESC LIMIT $${paramIndex}`;
+        params.push(parseInt(limit));
+        
+        const result = await pool.query(query, params);
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error fetching sales:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Get sales summary by salon for a month
+router.get('/sales/summary', async (req, res) => {
+    try {
+        const { month } = req.query;
+        const targetMonth = month || new Date().toISOString().slice(0, 7);
+        
+        const result = await pool.query(`
+            SELECT 
+                s.id as salon_id,
+                s.name as salon_name,
+                s.city as salon_city,
+                COUNT(ps.id) as sale_count,
+                COALESCE(SUM(ps.quantity), 0) as total_quantity,
+                COALESCE(SUM(ps.total_price), 0) as total_revenue,
+                COALESCE(SUM(CASE WHEN ps.payment_method = 'cash' THEN ps.total_price ELSE 0 END), 0) as cash_total,
+                COALESCE(SUM(CASE WHEN ps.payment_method = 'card' THEN ps.total_price ELSE 0 END), 0) as card_total
+            FROM salons s
+            LEFT JOIN product_sales ps ON s.id = ps.salon_id AND TO_CHAR(ps.sale_date, 'YYYY-MM') = $1
+            WHERE s.is_active = true
+            GROUP BY s.id, s.name, s.city
+            ORDER BY total_revenue DESC, s.name
+        `, [targetMonth]);
+        
+        // Calculate totals
+        const totals = result.rows.reduce((acc, row) => ({
+            total_sales: acc.total_sales + parseInt(row.sale_count),
+            total_quantity: acc.total_quantity + parseInt(row.total_quantity),
+            total_revenue: acc.total_revenue + parseFloat(row.total_revenue),
+            cash_total: acc.cash_total + parseFloat(row.cash_total),
+            card_total: acc.card_total + parseFloat(row.card_total)
+        }), { total_sales: 0, total_quantity: 0, total_revenue: 0, cash_total: 0, card_total: 0 });
+        
+        res.json({
+            month: targetMonth,
+            salons: result.rows,
+            totals
+        });
+    } catch (error) {
+        console.error('Error fetching sales summary:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Create a sale
+router.post('/sales', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { product_id, salon_id, quantity, unit_price, sale_date, payment_method, notes, vat_rate = 20, sale_type = 'sale' } = req.body;
+        
+        if (!product_id || !salon_id || !quantity) {
+            return res.status(400).json({ error: 'product_id, salon_id et quantity sont requis' });
+        }
+        
+        // For internal use, price and vat are 0
+        const isInternalUse = sale_type === 'internal_use';
+        const actualUnitPrice = isInternalUse ? 0 : unit_price;
+        const actualVatRate = isInternalUse ? 0 : vat_rate;
+        
+        if (!isInternalUse && !unit_price) {
+            return res.status(400).json({ error: 'unit_price est requis pour une vente' });
+        }
+        
+        await client.query('BEGIN');
+        
+        const total_price = quantity * actualUnitPrice;
+        // Calculate VAT amount: total_price * vat_rate / (100 + vat_rate) for included VAT
+        const vat_amount = isInternalUse ? 0 : Math.round(total_price * actualVatRate / (100 + actualVatRate) * 100) / 100;
+        
+        // Insert sale record
+        const saleResult = await client.query(`
+            INSERT INTO product_sales (product_id, salon_id, quantity, unit_price, total_price, sale_date, payment_method, notes, vat_rate, vat_amount, sale_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+        `, [
+            product_id,
+            salon_id,
+            quantity,
+            actualUnitPrice,
+            total_price,
+            sale_date || new Date().toISOString().split('T')[0],
+            isInternalUse ? 'salon' : (payment_method || 'cash'),
+            notes || null,
+            actualVatRate,
+            vat_amount,
+            sale_type
+        ]);
+        
+        // Decrease stock if exists
+        const stockCheck = await client.query(
+            'SELECT id, quantity FROM product_stock WHERE product_id = $1 AND salon_id = $2',
+            [product_id, salon_id]
+        );
+        
+        if (stockCheck.rows.length > 0) {
+            const currentStock = stockCheck.rows[0].quantity;
+            const newStock = Math.max(0, currentStock - quantity);
+            
+            await client.query(
+                'UPDATE product_stock SET quantity = $1 WHERE id = $2',
+                [newStock, stockCheck.rows[0].id]
+            );
+            
+            // Record movement
+            const movementReason = isInternalUse ? 'Utilisation interne salon' : 'Vente produit';
+            await client.query(`
+                INSERT INTO stock_movements 
+                (product_id, salon_id, movement_type, quantity, previous_stock, new_stock, unit_price, total_price, reason)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `, [product_id, salon_id, isInternalUse ? 'usage' : 'sale', quantity, currentStock, newStock, actualUnitPrice, total_price, movementReason]);
+        }
+        
+        await client.query('COMMIT');
+        
+        // Return sale with product info
+        const result = await pool.query(`
+            SELECT ps.*, p.name as product_name, s.name as salon_name
+            FROM product_sales ps
+            JOIN products p ON ps.product_id = p.id
+            JOIN salons s ON ps.salon_id = s.id
+            WHERE ps.id = $1
+        `, [saleResult.rows[0].id]);
+        
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error creating sale:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    } finally {
+        client.release();
+    }
+});
+
+// Delete a sale
+router.delete('/sales/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            'DELETE FROM product_sales WHERE id = $1 RETURNING *',
+            [id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Vente non trouvée' });
+        }
+        
+        res.json({ message: 'Vente supprimée', sale: result.rows[0] });
+    } catch (error) {
+        console.error('Error deleting sale:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 export default router;

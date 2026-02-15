@@ -12,10 +12,16 @@ import {
     RefreshCw,
     ChevronDown,
     ChevronUp,
+    ChevronLeft,
+    ChevronRight,
     Wifi,
     WifiOff,
     Download,
-    LogOut
+    LogOut,
+    Edit2,
+    Save,
+    X,
+    Wrench
 } from 'lucide-react';
 import {
     AreaChart,
@@ -30,11 +36,17 @@ import { useAuth } from '../context/AuthContext';
 import {
     transactionsAPI,
     assignmentsAPI,
-    salonsAPI
+    salonsAPI,
+    hairdressersAPI,
+    equipmentPurchasesAPI
 } from '../services/api';
 
 const MonEspace = () => {
     const { user, logout } = useAuth();
+    const [filterMonth, setFilterMonth] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
     const [stats, setStats] = useState({
         todayEarnings: 0,
         weekEarnings: 0,
@@ -42,6 +54,7 @@ const MonEspace = () => {
         todayServices: 0,
         monthServices: 0
     });
+    const [monthTransactions, setMonthTransactions] = useState([]);
     const [recentTransactions, setRecentTransactions] = useState([]);
     const [weeklyData, setWeeklyData] = useState([]);
     const [assignments, setAssignments] = useState([]);
@@ -53,6 +66,16 @@ const MonEspace = () => {
     const [showAllTransactions, setShowAllTransactions] = useState(false);
     const [installPrompt, setInstallPrompt] = useState(null);
     const [showInstallBanner, setShowInstallBanner] = useState(false);
+    
+    // RIB editing state
+    const [hairdresserData, setHairdresserData] = useState(null);
+    const [editingRib, setEditingRib] = useState(false);
+    const [ribForm, setRibForm] = useState({ rib_1: '', rib_2: '' });
+    const [savingRib, setSavingRib] = useState(false);
+
+    // Equipment purchases state
+    const [equipmentPurchases, setEquipmentPurchases] = useState([]);
+    const [equipmentTotal, setEquipmentTotal] = useState(0);
 
     // PWA Install prompt
     useEffect(() => {
@@ -87,7 +110,26 @@ const MonEspace = () => {
         if (user?.hairdresserId) {
             loadData();
         }
-    }, [user]);
+    }, [user, filterMonth]);
+
+    const changeMonth = (delta) => {
+        const [year, month] = filterMonth.split('-').map(Number);
+        const newDate = new Date(year, month - 1 + delta, 1);
+        setFilterMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`);
+        setShowAllTransactions(false);
+    };
+
+    const formatMonthLabel = (monthStr) => {
+        const [year, month] = monthStr.split('-');
+        const date = new Date(year, month - 1);
+        return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    };
+
+    const isCurrentMonth = () => {
+        const now = new Date();
+        const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return filterMonth === current;
+    };
 
     const loadData = useCallback(async (isRefresh = false) => {
         try {
@@ -105,6 +147,11 @@ const MonEspace = () => {
             // Get salons for lookup
             const salonsData = await salonsAPI.getAll();
             setSalons(salonsData);
+
+            // Get hairdresser data (for RIB)
+            const hairdresser = await hairdressersAPI.getById(user.hairdresserId);
+            setHairdresserData(hairdresser);
+            setRibForm({ rib_1: hairdresser.rib_1 || '', rib_2: hairdresser.rib_2 || '' });
 
             // Get all transactions for this hairdresser
             const allTransactions = await transactionsAPI.getByHairdresser(user.hairdresserId);
@@ -128,11 +175,13 @@ const MonEspace = () => {
                 return d >= weekStart && d < tomorrow;
             });
 
-            // This month
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            // Selected month filter
+            const [filterYear, filterMon] = filterMonth.split('-').map(Number);
+            const monthStart = new Date(filterYear, filterMon - 1, 1);
+            const monthEnd = new Date(filterYear, filterMon, 1);
             const monthTx = allTransactions.filter(t => {
                 const d = new Date(t.service_date_time);
-                return d >= monthStart && d < tomorrow;
+                return d >= monthStart && d < monthEnd;
             });
 
             // Helper function to safely get earnings from transaction
@@ -149,34 +198,52 @@ const MonEspace = () => {
                 monthServices: monthTx.length
             });
 
-            // Recent transactions
-            const sorted = [...allTransactions].sort((a, b) =>
+            // Month transactions sorted by date
+            const sortedMonthTx = [...monthTx].sort((a, b) =>
                 new Date(b.service_date_time) - new Date(a.service_date_time)
             );
-            setRecentTransactions(sorted.slice(0, 20));
+            setMonthTransactions(sortedMonthTx);
+            setRecentTransactions(sortedMonthTx.slice(0, 20));
 
-            // Weekly data for chart
+            // Chart data for selected month (daily breakdown)
             const chartData = [];
-            for (let i = 6; i >= 0; i--) {
-                const date = new Date();
-                date.setDate(date.getDate() - i);
-                date.setHours(0, 0, 0, 0);
-                const nextDate = new Date(date);
-                nextDate.setDate(nextDate.getDate() + 1);
-
-                const dayTx = allTransactions.filter(t => {
+            const daysInMonth = new Date(filterYear, filterMon, 0).getDate();
+            
+            // Group transactions by day for the selected month
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayStart = new Date(filterYear, filterMon - 1, day);
+                const dayEnd = new Date(filterYear, filterMon - 1, day + 1);
+                
+                const dayTx = monthTx.filter(t => {
                     const d = new Date(t.service_date_time);
-                    return d >= date && d < nextDate;
+                    return d >= dayStart && d < dayEnd;
                 });
 
-                chartData.push({
-                    label: date.toLocaleDateString('fr-FR', { weekday: 'short' }),
-                    fullDate: date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-                    earnings: dayTx.reduce((sum, t) => sum + getEarnings(t), 0),
-                    services: dayTx.length
-                });
+                if (dayTx.length > 0 || day === 1 || day === daysInMonth || day % 7 === 0) {
+                    chartData.push({
+                        label: String(day),
+                        fullDate: dayStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+                        earnings: dayTx.reduce((sum, t) => sum + getEarnings(t), 0),
+                        services: dayTx.length
+                    });
+                }
             }
             setWeeklyData(chartData);
+
+            // Load equipment purchases for this month
+            try {
+                const equipData = await equipmentPurchasesAPI.getByHairdresser(user.hairdresserId, {
+                    month: filterMon,
+                    year: filterYear
+                });
+                setEquipmentPurchases(equipData);
+                const total = equipData.reduce((sum, eq) => sum + (parseFloat(eq.amount) || 0), 0);
+                setEquipmentTotal(total);
+            } catch (equipErr) {
+                console.log('Equipment load error:', equipErr);
+                setEquipmentPurchases([]);
+                setEquipmentTotal(0);
+            }
 
             // Cache data for offline use
             try {
@@ -189,7 +256,8 @@ const MonEspace = () => {
                         monthServices: monthTx.length
                     },
                     weeklyData: chartData,
-                    recentTransactions: sorted.slice(0, 20),
+                    monthTransactions: sortedMonthTx.slice(0, 20),
+                    filterMonth: filterMonth,
                     timestamp: Date.now()
                 }));
             } catch (e) {
@@ -206,7 +274,8 @@ const MonEspace = () => {
                     const data = JSON.parse(cached);
                     setStats(data.stats);
                     setWeeklyData(data.weeklyData);
-                    setRecentTransactions(data.recentTransactions);
+                    setMonthTransactions(data.monthTransactions || []);
+                    setRecentTransactions(data.monthTransactions || []);
                     setError('Données hors ligne (dernière mise à jour: ' + new Date(data.timestamp).toLocaleString('fr-FR') + ')');
                 } else {
                     setError(err.message || 'Erreur lors du chargement des données');
@@ -218,7 +287,7 @@ const MonEspace = () => {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [user]);
+    }, [user, filterMonth]);
 
     const handleRefresh = () => {
         loadData(true);
@@ -235,6 +304,23 @@ const MonEspace = () => {
         }
     };
 
+    const handleSaveRib = async () => {
+        try {
+            setSavingRib(true);
+            await hairdressersAPI.updateRib(user.hairdresserId, ribForm);
+            setHairdresserData({ ...hairdresserData, ...ribForm });
+            setEditingRib(false);
+        } catch (err) {
+            setError('Erreur lors de la sauvegarde du RIB');
+        } finally {
+            setSavingRib(false);
+        }
+    };
+
+    const handleCancelRibEdit = () => {
+        setRibForm({ rib_1: hairdresserData?.rib_1 || '', rib_2: hairdresserData?.rib_2 || '' });
+        setEditingRib(false);
+    };
     const formatCurrency = (value) => {
         return new Intl.NumberFormat('fr-FR', { 
             style: 'currency', 
@@ -271,8 +357,8 @@ const MonEspace = () => {
     };
 
     const displayedTransactions = showAllTransactions 
-        ? recentTransactions 
-        : recentTransactions.slice(0, 5);
+        ? monthTransactions 
+        : monthTransactions.slice(0, 5);
 
     if (loading) {
         return (
@@ -344,6 +430,165 @@ const MonEspace = () => {
                 </div>
             )}
 
+            {/* RIB Section */}
+            <div className="mobile-card">
+                <div className="mobile-card-header">
+                    <h3>Mes coordonnées bancaires</h3>
+                    {!editingRib ? (
+                        <button 
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setEditingRib(true)}
+                            style={{ padding: '8px', minWidth: 'auto' }}
+                        >
+                            <Edit2 size={16} />
+                        </button>
+                    ) : (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button 
+                                className="btn btn-ghost btn-sm"
+                                onClick={handleCancelRibEdit}
+                                style={{ padding: '8px', minWidth: 'auto', color: 'var(--color-error)' }}
+                            >
+                                <X size={16} />
+                            </button>
+                            <button 
+                                className="btn btn-primary btn-sm"
+                                onClick={handleSaveRib}
+                                disabled={savingRib}
+                                style={{ padding: '8px 12px', minWidth: 'auto' }}
+                            >
+                                {savingRib ? '...' : <><Save size={16} style={{ marginRight: 4 }} /> Enregistrer</>}
+                            </button>
+                        </div>
+                    )}
+                </div>
+                
+                {editingRib ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label" style={{ fontSize: '13px', marginBottom: '6px' }}>RIB 1 (IBAN principal)</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                value={ribForm.rib_1}
+                                onChange={(e) => setRibForm({ ...ribForm, rib_1: e.target.value })}
+                                placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+                                style={{ fontSize: '14px' }}
+                            />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label" style={{ fontSize: '13px', marginBottom: '6px' }}>RIB 2 (IBAN secondaire - optionnel)</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                value={ribForm.rib_2}
+                                onChange={(e) => setRibForm({ ...ribForm, rib_2: e.target.value })}
+                                placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX"
+                                style={{ fontSize: '14px' }}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ 
+                            padding: '12px 16px', 
+                            background: 'var(--color-bg-secondary)', 
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <CreditCard size={18} style={{ color: 'var(--color-primary-400)', flexShrink: 0 }} />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '2px' }}>RIB 1</div>
+                                <div style={{ 
+                                    fontFamily: 'monospace', 
+                                    fontSize: '13px',
+                                    color: hairdresserData?.rib_1 ? 'var(--color-text-primary)' : 'var(--color-text-muted)'
+                                }}>
+                                    {hairdresserData?.rib_1 || 'Non renseigné'}
+                                </div>
+                            </div>
+                        </div>
+                        <div style={{ 
+                            padding: '12px 16px', 
+                            background: 'var(--color-bg-secondary)', 
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px'
+                        }}>
+                            <CreditCard size={18} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '2px' }}>RIB 2</div>
+                                <div style={{ 
+                                    fontFamily: 'monospace', 
+                                    fontSize: '13px',
+                                    color: hairdresserData?.rib_2 ? 'var(--color-text-primary)' : 'var(--color-text-muted)'
+                                }}>
+                                    {hairdresserData?.rib_2 || 'Non renseigné'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Equipment Deductions Section */}
+            {equipmentPurchases.length > 0 && (
+                <div className="mobile-card" style={{ 
+                    border: '1px solid var(--color-error)',
+                    background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(239, 68, 68, 0.02))'
+                }}>
+                    <div className="mobile-card-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Wrench size={18} style={{ color: 'var(--color-error)' }} />
+                            <h3 style={{ color: 'var(--color-error)' }}>Déductions Matériel</h3>
+                        </div>
+                        <span style={{ 
+                            fontWeight: 700, 
+                            fontSize: '16px', 
+                            color: 'var(--color-error)',
+                            background: 'var(--color-error-bg)',
+                            padding: '4px 12px',
+                            borderRadius: '8px'
+                        }}>
+                            -{formatCurrency(equipmentTotal)}
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginBottom: '12px' }}>
+                        Achats de matériel déduits de votre salaire ce mois
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {equipmentPurchases.map(eq => (
+                            <div key={eq.id} style={{ 
+                                padding: '10px 12px', 
+                                background: 'var(--color-bg-secondary)', 
+                                borderRadius: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <div>
+                                    <div style={{ fontWeight: 500, fontSize: '14px' }}>{eq.description}</div>
+                                    <div style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                                        {new Date(eq.purchase_date).toLocaleDateString('fr-FR')}
+                                        {eq.notes && ` - ${eq.notes}`}
+                                    </div>
+                                </div>
+                                <span style={{ 
+                                    fontWeight: 600, 
+                                    color: 'var(--color-error)',
+                                    fontSize: '14px'
+                                }}>
+                                    -{formatCurrency(eq.amount)}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Stats Cards - Horizontal Scroll */}
             <div className="mobile-stats-container">
                 <div className="mobile-stats-scroll">
@@ -389,31 +634,48 @@ const MonEspace = () => {
                 </div>
             </div>
 
+            {/* Month Navigation */}
+            <div className="mobile-month-nav">
+                <button 
+                    className="month-nav-btn"
+                    onClick={() => changeMonth(-1)}
+                >
+                    <ChevronLeft size={20} />
+                </button>
+                <span className="month-nav-label">{formatMonthLabel(filterMonth)}</span>
+                <button 
+                    className="month-nav-btn"
+                    onClick={() => changeMonth(1)}
+                    disabled={isCurrentMonth()}
+                    style={{ opacity: isCurrentMonth() ? 0.3 : 1 }}
+                >
+                    <ChevronRight size={20} />
+                </button>
+            </div>
+
             {/* Monthly Earnings Highlight */}
             <div className="mobile-card mobile-earnings-highlight">
                 <div className="earnings-highlight-content">
-                    <div className="earnings-highlight-label">Total du mois</div>
+                    <div className="earnings-highlight-label">Total {formatMonthLabel(filterMonth)}</div>
                     <div className="earnings-highlight-value">
-                        {formatCurrencyFull(stats.monthEarnings)}
+                        {formatCurrencyFull(stats.monthEarnings - equipmentTotal)}
                     </div>
                     <div className="earnings-highlight-details">
                         <span>{stats.monthServices} services</span>
-                        <span className="separator">•</span>
-                        <span>
-                            {stats.monthServices > 0 
-                                ? formatCurrencyFull(stats.monthEarnings / stats.monthServices) + ' / service'
-                                : '—'
-                            }
-                        </span>
+                        {equipmentTotal > 0 && (
+                            <span style={{ color: 'var(--color-error)', marginLeft: '8px' }}>
+                                (Matériel: -{formatCurrency(equipmentTotal)})
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Weekly Chart */}
+            {/* Monthly Chart */}
             <div className="mobile-card">
                 <div className="mobile-card-header">
-                    <h3>7 derniers jours</h3>
-                    <span className="mobile-badge">{formatCurrency(stats.weekEarnings)}</span>
+                    <h3>Évolution du mois</h3>
+                    <span className="mobile-badge">{formatCurrency(stats.monthEarnings - equipmentTotal)}</span>
                 </div>
                 <div className="mobile-chart-container">
                     <ResponsiveContainer width="100%" height={180}>
@@ -466,14 +728,14 @@ const MonEspace = () => {
             {/* Recent Transactions */}
             <div className="mobile-card">
                 <div className="mobile-card-header">
-                    <h3>Derniers services</h3>
-                    <span className="mobile-badge-secondary">{recentTransactions.length}</span>
+                    <h3>Services du mois</h3>
+                    <span className="mobile-badge-secondary">{monthTransactions.length}</span>
                 </div>
 
-                {recentTransactions.length === 0 ? (
+                {monthTransactions.length === 0 ? (
                     <div className="mobile-empty-state">
                         <Scissors size={40} />
-                        <p>Aucun service enregistré</p>
+                        <p>Aucun service ce mois</p>
                     </div>
                 ) : (
                     <>
@@ -504,7 +766,7 @@ const MonEspace = () => {
                             ))}
                         </div>
 
-                        {recentTransactions.length > 5 && (
+                        {monthTransactions.length > 5 && (
                             <button 
                                 className="show-more-btn"
                                 onClick={() => setShowAllTransactions(!showAllTransactions)}
@@ -512,7 +774,7 @@ const MonEspace = () => {
                                 {showAllTransactions ? (
                                     <>Voir moins <ChevronUp size={16} /></>
                                 ) : (
-                                    <>Voir plus ({recentTransactions.length - 5}) <ChevronDown size={16} /></>
+                                    <>Voir plus ({monthTransactions.length - 5}) <ChevronDown size={16} /></>
                                 )}
                             </button>
                         )}

@@ -79,6 +79,10 @@ export const hairdressersAPI = {
         method: 'PUT',
         body: JSON.stringify(data)
     }),
+    updateRib: (id, data) => fetchAPI(`/hairdressers/${id}/rib`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
     delete: (id) => fetchAPI(`/hairdressers/${id}`, {
         method: 'DELETE'
     })
@@ -187,7 +191,23 @@ export const productsAPI = {
         );
         const params = new URLSearchParams(cleanFilters).toString();
         return fetchAPI(`/products/movements${params ? `?${params}` : ''}`);
-    }
+    },
+    // Sales management
+    getSales: (filters = {}) => {
+        const cleanFilters = Object.fromEntries(
+            Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+        );
+        const params = new URLSearchParams(cleanFilters).toString();
+        return fetchAPI(`/products/sales/list${params ? `?${params}` : ''}`);
+    },
+    getSalesSummary: (month) => fetchAPI(`/products/sales/summary${month ? `?month=${month}` : ''}`),
+    createSale: (data) => fetchAPI('/products/sales', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    deleteSale: (id) => fetchAPI(`/products/sales/${id}`, {
+        method: 'DELETE'
+    })
 };
 
 // ========================================
@@ -273,21 +293,45 @@ export const presenceAPI = {
 // ANALYTICS API
 // ========================================
 export const analyticsAPI = {
-    getDashboard: () => fetchAPI('/analytics/dashboard'),
-    getDashboardStats: () => fetchAPI('/analytics/dashboard'),
-    getDailyRevenue: (days = 7) => fetchAPI(`/analytics/daily-revenue?days=${days}`),
-    getRevenueBySalon: (period = 'month') => fetchAPI(`/analytics/revenue-by-salon?period=${period}`),
-    getTopHairdressers: (limit = 5, period = 'month') => 
-        fetchAPI(`/analytics/top-hairdressers?limit=${limit}&period=${period}`),
-    getServiceBreakdown: (period = 'month') => fetchAPI(`/analytics/service-breakdown?period=${period}`),
-    getPaymentMethods: (period = 'month') => fetchAPI(`/analytics/payment-methods?period=${period}`),
+    getDashboard: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/dashboard${params ? `?${params}` : ''}`);
+    },
+    getDashboardStats: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/dashboard${params ? `?${params}` : ''}`);
+    },
+    getDailyRevenue: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/daily-revenue${params ? `?${params}` : ''}`);
+    },
+    getRevenueBySalon: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/revenue-by-salon${params ? `?${params}` : ''}`);
+    },
+    getTopHairdressers: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/top-hairdressers${params ? `?${params}` : ''}`);
+    },
+    getServiceBreakdown: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/service-breakdown${params ? `?${params}` : ''}`);
+    },
+    getPaymentMethods: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/payment-methods${params ? `?${params}` : ''}`);
+    },
     getPaymentMethodStats: () => fetchAPI('/analytics/payment-methods'),
     getRecentTransactions: (limit = 5) => fetchAPI(`/analytics/recent-transactions?limit=${limit}`),
     getPayroll: (filters = {}) => {
         const params = new URLSearchParams(filters).toString();
         return fetchAPI(`/analytics/payroll${params ? `?${params}` : ''}`);
     },
-    getHairdresserStats: (hairdresserId) => fetchAPI(`/analytics/hairdresser/${hairdresserId}`)
+    getHairdresserStats: (hairdresserId) => fetchAPI(`/analytics/hairdresser/${hairdresserId}`),
+    getMonthlyComparison: (filters = {}) => {
+        const params = new URLSearchParams(filters).toString();
+        return fetchAPI(`/analytics/monthly-comparison${params ? `?${params}` : ''}`);
+    }
 };
 
 // ========================================
@@ -384,6 +428,32 @@ export const fixedExpensesAPI = {
 };
 
 // ========================================
+// USERS API
+// ========================================
+export const usersAPI = {
+    getAll: () => fetchAPI('/users'),
+    getById: (id) => fetchAPI(`/users/${id}`),
+    create: (data) => fetchAPI('/users', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    update: (id, data) => fetchAPI(`/users/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    updatePassword: (id, password) => fetchAPI(`/users/${id}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ password })
+    }),
+    toggleActive: (id) => fetchAPI(`/users/${id}/toggle-active`, {
+        method: 'PUT'
+    }),
+    delete: (id) => fetchAPI(`/users/${id}`, {
+        method: 'DELETE'
+    })
+};
+
+// ========================================
 // SYNTHESIS API
 // ========================================
 export const synthesisAPI = {
@@ -392,6 +462,38 @@ export const synthesisAPI = {
     updateDeclaredCash: (salon_id, month, declared_amount) => fetchAPI('/synthesis/declared-cash', {
         method: 'POST',
         body: JSON.stringify({ salon_id, month, declared_amount })
+    }),
+    getBenefice: (month) => fetchAPI(`/synthesis/benefice?month=${month}`)
+};
+
+// ========================================
+// EQUIPMENT PURCHASES API
+// ========================================
+export const equipmentPurchasesAPI = {
+    getAll: (filters = {}) => {
+        const params = new URLSearchParams(
+            Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+        ).toString();
+        return fetchAPI(`/equipment-purchases${params ? `?${params}` : ''}`);
+    },
+    getByHairdresser: (hairdresserId, filters = {}) => {
+        const params = new URLSearchParams(
+            Object.entries(filters).filter(([_, v]) => v !== undefined && v !== null && v !== '')
+        ).toString();
+        return fetchAPI(`/equipment-purchases/hairdresser/${hairdresserId}${params ? `?${params}` : ''}`);
+    },
+    getTotal: (hairdresserId, month, year) => 
+        fetchAPI(`/equipment-purchases/total/${hairdresserId}/${month}/${year}`),
+    create: (data) => fetchAPI('/equipment-purchases', {
+        method: 'POST',
+        body: JSON.stringify(data)
+    }),
+    update: (id, data) => fetchAPI(`/equipment-purchases/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data)
+    }),
+    delete: (id) => fetchAPI(`/equipment-purchases/${id}`, {
+        method: 'DELETE'
     })
 };
 
@@ -410,5 +512,7 @@ export default {
     analytics: analyticsAPI,
     salaryCosts: salaryCostsAPI,
     salaryPayments: salaryPaymentsAPI,
-    synthesis: synthesisAPI
+    synthesis: synthesisAPI,
+    users: usersAPI,
+    equipmentPurchases: equipmentPurchasesAPI
 };

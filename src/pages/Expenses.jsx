@@ -235,6 +235,17 @@ const Expenses = () => {
     // Fixed expense handlers
     const handleSubmitFixed = async (e) => {
         e.preventDefault();
+        
+        // Validation
+        if (!fixedFormData.salon_id) {
+            setError('Veuillez sélectionner un salon');
+            return;
+        }
+        if (!fixedFormData.name.trim()) {
+            setError('Veuillez entrer un nom');
+            return;
+        }
+        
         try {
             if (editing) {
                 await fixedExpensesAPI.update(editing.id, {

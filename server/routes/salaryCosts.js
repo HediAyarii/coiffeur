@@ -103,7 +103,11 @@ router.post('/import', async (req, res) => {
         );
 
         let imported = 0;
+        let addedFromServices = 0;
         let errors = [];
+
+        // Track imported hairdresser IDs
+        const importedHairdresserIds = new Set();
 
         for (const row of data) {
             try {
@@ -123,6 +127,16 @@ router.post('/import', async (req, res) => {
                     ? hairdresserResult.rows[0].id 
                     : null;
 
+                if (hairdresserId) {
+                    importedHairdresserIds.add(hairdresserId);
+                }
+
+                const netSalary = parseFloat(row.net_salary) || 0;
+                const grossSalary = parseFloat(row.gross_salary) || 0;
+                const totalCost = parseFloat(row.total_cost) || 0;
+                // Auto-calculate charges: Coût Total - Salaire Net
+                const charges = totalCost - netSalary;
+
                 await client.query(`
                     INSERT INTO salary_costs (
                         hairdresser_id, last_name, first_name, 
@@ -133,10 +147,10 @@ router.post('/import', async (req, res) => {
                     hairdresserId,
                     row.last_name.trim(),
                     row.first_name.trim(),
-                    parseFloat(row.net_salary) || 0,
-                    parseFloat(row.gross_salary) || 0,
-                    parseFloat(row.total_cost) || 0,
-                    parseFloat(row.charges) || 0,
+                    netSalary,
+                    grossSalary,
+                    totalCost,
+                    charges,
                     parseInt(month),
                     parseInt(year)
                 ]);
@@ -147,13 +161,54 @@ router.post('/import', async (req, res) => {
             }
         }
 
+        // Find hairdressers who worked this month but are not in the CSV
+        const workingHairdressers = await client.query(`
+            SELECT DISTINCT h.id, h.first_name, h.last_name
+            FROM hairdressers h
+            INNER JOIN service_history sh ON h.id = sh.hairdresser_id
+            WHERE EXTRACT(MONTH FROM sh.service_date_time) = $1
+              AND EXTRACT(YEAR FROM sh.service_date_time) = $2
+        `, [parseInt(month), parseInt(year)]);
+
+        // Add missing hairdressers with 0 salary values
+        for (const hairdresser of workingHairdressers.rows) {
+            if (!importedHairdresserIds.has(hairdresser.id)) {
+                try {
+                    await client.query(`
+                        INSERT INTO salary_costs (
+                            hairdresser_id, last_name, first_name, 
+                            net_salary, gross_salary, total_cost, charges,
+                            month, year
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    `, [
+                        hairdresser.id,
+                        hairdresser.last_name,
+                        hairdresser.first_name,
+                        0, // net_salary
+                        0, // gross_salary
+                        0, // total_cost
+                        0, // charges
+                        parseInt(month),
+                        parseInt(year)
+                    ]);
+                    addedFromServices++;
+                } catch (err) {
+                    errors.push({ 
+                        row: { first_name: hairdresser.first_name, last_name: hairdresser.last_name }, 
+                        error: err.message 
+                    });
+                }
+            }
+        }
+
         await client.query('COMMIT');
 
         res.json({ 
             success: true, 
             imported, 
+            addedFromServices,
             errors: errors.length > 0 ? errors : undefined,
-            message: `${imported} lignes importées avec succès`
+            message: `${imported} lignes importées + ${addedFromServices} coiffeurs ajoutés depuis les services`
         });
     } catch (error) {
         await client.query('ROLLBACK');
