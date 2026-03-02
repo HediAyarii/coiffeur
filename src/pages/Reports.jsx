@@ -54,9 +54,14 @@ import {
 const Reports = () => {
     const [period, setPeriod] = useState('month');
     const [selectedSalon, setSelectedSalon] = useState('');
-    const [selectedMonth, setSelectedMonth] = useState(() => {
+    const [startDate, setStartDate] = useState(() => {
         const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    });
+    const [endDate, setEndDate] = useState(() => {
+        const now = new Date();
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     });
     const [compareMode, setCompareMode] = useState(false);
     const [activeTab, setActiveTab] = useState('overview');
@@ -89,7 +94,7 @@ const Reports = () => {
 
     useEffect(() => {
         loadReportData();
-    }, [period, selectedSalon, selectedMonth]);
+    }, [period, selectedSalon, startDate, endDate]);
 
     const loadInitialData = async () => {
         try {
@@ -105,10 +110,8 @@ const Reports = () => {
         setError(null);
         
         try {
-            const [year, monthNum] = selectedMonth.split('-');
-            
-            // Build filter params for all API calls
-            const baseFilters = { month: selectedMonth };
+            // Build filter params for all API calls using date range
+            const baseFilters = { start_date: startDate, end_date: endDate };
             if (selectedSalon) baseFilters.salon_id = selectedSalon;
             
             // Get dashboard stats with filters
@@ -121,26 +124,27 @@ const Reports = () => {
             let salariesTotal = 0;
 
             try {
-                // Fixed expenses
-                const fixedParams = { month: selectedMonth };
+                // Fixed expenses - use start date month for now
+                const [year, monthNum] = startDate.split('-');
+                const fixedParams = { month: `${year}-${monthNum}` };
                 if (selectedSalon) fixedParams.salon_id = selectedSalon;
                 const fixed = await fixedExpensesAPI.getAll(fixedParams);
                 fixedTotal = fixed.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
 
-                // Variable expenses
+                // Variable expenses - filter by date range
                 let vars = await expensesAPI.getAll();
                 if (selectedSalon) {
                     vars = vars.filter(e => e.salon_id === selectedSalon);
                 }
                 vars = vars.filter(e => {
                     if (!e.date) return false;
-                    const d = new Date(e.date);
-                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === selectedMonth;
+                    const d = e.date.split('T')[0];
+                    return d >= startDate && d <= endDate;
                 });
                 variableTotal = vars.filter(e => e.type === 'variable')
                     .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
 
-                // Salary costs - use numeric month and year
+                // Salary costs - use start date month and year
                 try {
                     const salaries = await salaryCostsAPI.getAll({ 
                         month: parseInt(monthNum), 
@@ -174,12 +178,12 @@ const Reports = () => {
                 profitMargin
             });
 
-            // Revenue over time (daily for selected month)
+            // Revenue over time (daily for selected date range)
             const dailyRevenue = await analyticsAPI.getDailyRevenue(baseFilters);
             setRevenueData(dailyRevenue);
 
             // Revenue by salon
-            const salonRevenue = await analyticsAPI.getRevenueBySalon({ month: selectedMonth });
+            const salonRevenue = await analyticsAPI.getRevenueBySalon({ start_date: startDate, end_date: endDate });
             setSalonData(salonRevenue.filter(s => s.revenue > 0));
 
             // Service breakdown
@@ -258,7 +262,7 @@ const Reports = () => {
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = `rapport_${selectedMonth}.csv`;
+        link.download = `rapport_${startDate}_${endDate}.csv`;
         link.click();
     };
 
@@ -311,14 +315,24 @@ const Reports = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {/* Month Selector */}
-                    <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="form-input"
-                        style={{ width: '180px' }}
-                    />
+                    {/* Date Range Selectors */}
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="form-input"
+                            style={{ width: '150px' }}
+                        />
+                        <span style={{ color: 'var(--color-text-muted)' }}>à</span>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="form-input"
+                            style={{ width: '150px' }}
+                        />
+                    </div>
 
                     {/* Salon Filter */}
                     <select

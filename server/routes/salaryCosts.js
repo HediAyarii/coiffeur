@@ -111,8 +111,8 @@ router.post('/import', async (req, res) => {
 
         for (const row of data) {
             try {
-                // Try to find the hairdresser by last_name and first_name
-                const hairdresserResult = await client.query(`
+                // Try to find the hairdresser by last_name and first_name (normal order)
+                let hairdresserResult = await client.query(`
                     SELECT id FROM hairdressers 
                     WHERE LOWER(last_name) = LOWER($1) 
                     AND (
@@ -122,6 +122,31 @@ router.post('/import', async (req, res) => {
                     )
                     LIMIT 1
                 `, [row.last_name.trim(), row.first_name.split(',')[0].trim()]);
+
+                // If not found, try with inverted names (CSV last_name = DB first_name, CSV first_name = DB last_name)
+                if (hairdresserResult.rows.length === 0) {
+                    hairdresserResult = await client.query(`
+                        SELECT id FROM hairdressers 
+                        WHERE LOWER(first_name) = LOWER($1) 
+                        AND (
+                            LOWER(last_name) = LOWER($2)
+                            OR LOWER(last_name) LIKE LOWER($2) || '%'
+                            OR $2 LIKE LOWER(last_name) || '%'
+                        )
+                        LIMIT 1
+                    `, [row.last_name.trim(), row.first_name.split(',')[0].trim()]);
+                }
+
+                // If still not found, try matching by combining names (for cases like "HAMIDI ALAOUI HAFID")
+                if (hairdresserResult.rows.length === 0) {
+                    const fullNameFromCSV = `${row.last_name.trim()} ${row.first_name.trim()}`.toLowerCase();
+                    hairdresserResult = await client.query(`
+                        SELECT id FROM hairdressers 
+                        WHERE LOWER(first_name || ' ' || last_name) = LOWER($1)
+                           OR LOWER(last_name || ' ' || first_name) = LOWER($1)
+                        LIMIT 1
+                    `, [fullNameFromCSV]);
+                }
 
                 const hairdresserId = hairdresserResult.rows.length > 0 
                     ? hairdresserResult.rows[0].id 

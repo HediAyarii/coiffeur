@@ -3,14 +3,22 @@ import pool from '../database/db.js';
 
 const router = express.Router();
 
-// Helper to build date filter based on month parameter (YYYY-MM format)
-const buildDateFilter = (month, salonId, tableAlias = '') => {
+// Helper to build date filter based on date range or month parameter
+const buildDateFilter = (month, salonId, tableAlias = '', startDate = null, endDate = null) => {
     const prefix = tableAlias ? `${tableAlias}.` : '';
     let filters = [];
     let params = [];
     let paramIndex = 1;
 
-    if (month) {
+    // Prefer date range over month if provided
+    if (startDate && endDate) {
+        filters.push(`DATE(${prefix}service_date_time) >= $${paramIndex}`);
+        params.push(startDate);
+        paramIndex++;
+        filters.push(`DATE(${prefix}service_date_time) <= $${paramIndex}`);
+        params.push(endDate);
+        paramIndex++;
+    } else if (month) {
         filters.push(`TO_CHAR(${prefix}service_date_time, 'YYYY-MM') = $${paramIndex}`);
         params.push(month);
         paramIndex++;
@@ -33,10 +41,41 @@ const buildDateFilter = (month, salonId, tableAlias = '') => {
 // Get dashboard stats with filters
 router.get('/dashboard', async (req, res) => {
     try {
-        const { salon_id, month } = req.query;
+        const { salon_id, month, start_date, end_date } = req.query;
         
         let salonFilter = salon_id ? 'AND salon_id = $1' : '';
         const salonParams = salon_id ? [salon_id] : [];
+        
+        // If date range is specified, use that
+        if (start_date && end_date) {
+            const params = salon_id ? [salon_id, start_date, end_date] : [start_date, end_date];
+            const startIdx = salon_id ? '$2' : '$1';
+            const endIdx = salon_id ? '$3' : '$2';
+            
+            const rangeRevenue = await pool.query(
+                `SELECT COALESCE(SUM(price_salon), 0) as total,
+                        COUNT(*) as count
+                 FROM service_history 
+                 WHERE DATE(service_date_time) >= ${startIdx}
+                   AND DATE(service_date_time) <= ${endIdx}
+                   ${salonFilter}`,
+                params
+            );
+            
+            res.json({
+                todayRevenue: 0,
+                todayServices: 0,
+                weekRevenue: 0,
+                monthRevenue: parseFloat(rangeRevenue.rows[0].total),
+                monthServices: parseInt(rangeRevenue.rows[0].count),
+                activeSalons: 0,
+                activeHairdressers: 0,
+                avgTicket: rangeRevenue.rows[0].count > 0 
+                    ? parseFloat(rangeRevenue.rows[0].total) / parseInt(rangeRevenue.rows[0].count) 
+                    : 0
+            });
+            return;
+        }
         
         // If month is specified, use that month; otherwise use current date-based queries
         if (month) {
@@ -131,13 +170,58 @@ router.get('/dashboard', async (req, res) => {
 });
 
 
-// Get daily revenue for chart (for a specific month or last N days)
+// Get daily revenue for chart (for a specific month, date range, or last N days)
 router.get('/daily-revenue', async (req, res) => {
     try {
-        const { days = 30, salon_id, month } = req.query;
+        const { days = 30, salon_id, month, start_date, end_date } = req.query;
         
         let salonFilter = salon_id ? 'AND salon_id = $1' : '';
         const baseParams = salon_id ? [salon_id] : [];
+        
+        // If date range specified, get daily data for that range
+        if (start_date && end_date) {
+            const rangeParams = salon_id ? [salon_id, start_date, end_date] : [start_date, end_date];
+            const startIdx = salon_id ? '$2' : '$1';
+            const endIdx = salon_id ? '$3' : '$2';
+            
+            const result = await pool.query(
+                `SELECT 
+                    DATE(service_date_time) as date,
+                    COALESCE(SUM(price_salon), 0) as revenue,
+                    COUNT(*) as count
+                 FROM service_history
+                 WHERE DATE(service_date_time) >= ${startIdx}
+                   AND DATE(service_date_time) <= ${endIdx}
+                   ${salonFilter}
+                 GROUP BY DATE(service_date_time)
+                 ORDER BY DATE(service_date_time)`,
+                rangeParams
+            );
+
+            // Fill in all days of the range
+            const filledData = [];
+            const startD = new Date(start_date);
+            const endD = new Date(end_date);
+            
+            for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().split('T')[0];
+                const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+                
+                const existing = result.rows.find(r => {
+                    const rDate = new Date(r.date);
+                    return rDate.toISOString().split('T')[0] === dateStr;
+                });
+                
+                filledData.push({
+                    date: dateStr,
+                    label,
+                    revenue: existing ? parseFloat(existing.revenue) : 0,
+                    count: existing ? parseInt(existing.count) : 0
+                });
+            }
+
+            return res.json(filledData);
+        }
         
         // If month specified, get daily data for that month
         if (month) {
@@ -224,12 +308,17 @@ router.get('/daily-revenue', async (req, res) => {
 // Get revenue by salon
 router.get('/revenue-by-salon', async (req, res) => {
     try {
-        const { period = 'month', month } = req.query;
+        const { period = 'month', month, start_date, end_date } = req.query;
         
         let dateFilter = '';
         const params = [];
+        let paramIndex = 1;
         
-        if (month) {
+        if (start_date && end_date) {
+            dateFilter = `AND DATE(sh.service_date_time) >= $${paramIndex} AND DATE(sh.service_date_time) <= $${paramIndex + 1}`;
+            params.push(start_date, end_date);
+            paramIndex += 2;
+        } else if (month) {
             dateFilter = `AND TO_CHAR(sh.service_date_time, 'YYYY-MM') = $1`;
             params.push(month);
         } else if (period === 'week') {
@@ -268,13 +357,17 @@ router.get('/revenue-by-salon', async (req, res) => {
 // Get top hairdressers
 router.get('/top-hairdressers', async (req, res) => {
     try {
-        const { limit = 5, period = 'month', salon_id, month } = req.query;
+        const { limit = 5, period = 'month', salon_id, month, start_date, end_date } = req.query;
         
         let dateFilter = '';
         const params = [parseInt(limit)];
         let paramIndex = 2;
         
-        if (month) {
+        if (start_date && end_date) {
+            dateFilter = `AND DATE(sh.service_date_time) >= $${paramIndex} AND DATE(sh.service_date_time) <= $${paramIndex + 1}`;
+            params.push(start_date, end_date);
+            paramIndex += 2;
+        } else if (month) {
             dateFilter = `AND TO_CHAR(sh.service_date_time, 'YYYY-MM') = $${paramIndex}`;
             params.push(month);
             paramIndex++;
@@ -322,13 +415,20 @@ router.get('/top-hairdressers', async (req, res) => {
 // Get service breakdown
 router.get('/service-breakdown', async (req, res) => {
     try {
-        const { period = 'month', salon_id, month } = req.query;
+        const { period = 'month', salon_id, month, start_date, end_date } = req.query;
         
         let filters = [];
         const params = [];
         let paramIndex = 1;
         
-        if (month) {
+        if (start_date && end_date) {
+            filters.push(`DATE(service_date_time) >= $${paramIndex}`);
+            params.push(start_date);
+            paramIndex++;
+            filters.push(`DATE(service_date_time) <= $${paramIndex}`);
+            params.push(end_date);
+            paramIndex++;
+        } else if (month) {
             filters.push(`TO_CHAR(service_date_time, 'YYYY-MM') = $${paramIndex}`);
             params.push(month);
             paramIndex++;
@@ -373,13 +473,20 @@ router.get('/service-breakdown', async (req, res) => {
 // Get payment method stats
 router.get('/payment-methods', async (req, res) => {
     try {
-        const { period = 'month', salon_id, month } = req.query;
+        const { period = 'month', salon_id, month, start_date, end_date } = req.query;
         
         let filters = [];
         const params = [];
         let paramIndex = 1;
         
-        if (month) {
+        if (start_date && end_date) {
+            filters.push(`DATE(service_date_time) >= $${paramIndex}`);
+            params.push(start_date);
+            paramIndex++;
+            filters.push(`DATE(service_date_time) <= $${paramIndex}`);
+            params.push(end_date);
+            paramIndex++;
+        } else if (month) {
             filters.push(`TO_CHAR(service_date_time, 'YYYY-MM') = $${paramIndex}`);
             params.push(month);
             paramIndex++;

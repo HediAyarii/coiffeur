@@ -457,13 +457,25 @@ export const usersAPI = {
 // SYNTHESIS API
 // ========================================
 export const synthesisAPI = {
-    getSynthesis: (month) => fetchAPI(`/synthesis${month ? `?month=${month}` : ''}`),
+    getSynthesis: (startDate, endDate) => {
+        const params = new URLSearchParams();
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        const queryString = params.toString();
+        return fetchAPI(`/synthesis${queryString ? `?${queryString}` : ''}`);
+    },
     getDeclaredCash: (salonId, month) => fetchAPI(`/synthesis/declared-cash/${salonId}/${month}`),
     updateDeclaredCash: (salon_id, month, declared_amount) => fetchAPI('/synthesis/declared-cash', {
         method: 'POST',
         body: JSON.stringify({ salon_id, month, declared_amount })
     }),
-    getBenefice: (month) => fetchAPI(`/synthesis/benefice?month=${month}`)
+    getBenefice: (startDate, endDate) => {
+        const params = new URLSearchParams();
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        const queryString = params.toString();
+        return fetchAPI(`/synthesis/benefice${queryString ? `?${queryString}` : ''}`);
+    }
 };
 
 // ========================================

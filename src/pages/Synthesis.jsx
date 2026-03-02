@@ -7,7 +7,15 @@ const Synthesis = () => {
     const [salons, setSalons] = useState([]);
     const [declaredCash, setDeclaredCash] = useState({});
     const [beneficeData, setBeneficeData] = useState(null);
-    const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [startDate, setStartDate] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    });
+    const [endDate, setEndDate] = useState(() => {
+        const now = new Date();
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [editingCash, setEditingCash] = useState({});
@@ -17,10 +25,10 @@ const Synthesis = () => {
     }, []);
 
     useEffect(() => {
-        if (filterMonth) {
+        if (startDate && endDate) {
             loadSynthesis();
         }
-    }, [filterMonth]);
+    }, [startDate, endDate]);
 
     const loadData = async () => {
         try {
@@ -38,11 +46,13 @@ const Synthesis = () => {
 
     const loadSynthesis = async () => {
         try {
-            const data = await synthesisAPI.getSynthesis(filterMonth);
+            const data = await synthesisAPI.getSynthesis(startDate, endDate);
             setSynthesisData(data);
 
+            // Use start date month for declared cash
+            const declaredMonth = startDate.slice(0, 7);
             const cashPromises = data.map(salon =>
-                synthesisAPI.getDeclaredCash(salon.salon_id, filterMonth)
+                synthesisAPI.getDeclaredCash(salon.salon_id, declaredMonth)
             );
             const cashData = await Promise.all(cashPromises);
             
@@ -54,7 +64,7 @@ const Synthesis = () => {
             
             // Load benefice data
             try {
-                const benefice = await synthesisAPI.getBenefice(filterMonth);
+                const benefice = await synthesisAPI.getBenefice(startDate, endDate);
                 setBeneficeData(benefice);
             } catch (beneficeErr) {
                 console.error('Error loading benefice:', beneficeErr);
@@ -76,7 +86,8 @@ const Synthesis = () => {
     const handleSaveDeclaredCash = async (salonId) => {
         try {
             const amount = parseFloat(editingCash[salonId]) || 0;
-            await synthesisAPI.updateDeclaredCash(salonId, filterMonth, amount);
+            const declaredMonth = startDate.slice(0, 7);
+            await synthesisAPI.updateDeclaredCash(salonId, declaredMonth, amount);
             await loadSynthesis();
             setEditingCash({
                 ...editingCash,
@@ -134,14 +145,28 @@ const Synthesis = () => {
                     <p className="page-subtitle">Vue d'ensemble du CA et de la TVA par salon</p>
                 </div>
                 <div className="page-header-actions">
-                    <div className="form-group" style={{ marginBottom: 0, minWidth: '180px' }}>
-                        <label className="form-label">Mois</label>
-                        <input
-                            type="month"
-                            className="form-input"
-                            value={filterMonth}
-                            onChange={(e) => setFilterMonth(e.target.value)}
-                        />
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Date début</label>
+                            <input
+                                type="date"
+                                className="form-input"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                style={{ width: '150px' }}
+                            />
+                        </div>
+                        <span style={{ color: 'var(--color-text-muted)', marginTop: '24px' }}>à</span>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label className="form-label">Date fin</label>
+                            <input
+                                type="date"
+                                className="form-input"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                style={{ width: '150px' }}
+                            />
+                        </div>
                     </div>
                     <button className="btn btn-secondary" onClick={loadSynthesis}>
                         <RefreshCw size={18} />
@@ -201,7 +226,7 @@ const Synthesis = () => {
             <div className="card">
                 <h3 className="card-title" style={{ marginBottom: '1.5rem' }}>
                     <Calculator size={20} style={{ marginRight: 'var(--space-2)' }} />
-                    Détail par Salon - {filterMonth}
+                    Détail par Salon - du {startDate} au {endDate}
                 </h3>
 
                 {/* Desktop Table */}
@@ -435,7 +460,7 @@ const Synthesis = () => {
                 <div className="card" style={{ marginTop: 'var(--space-6)' }}>
                     <h3 className="card-title" style={{ marginBottom: '1.5rem' }}>
                         <PiggyBank size={20} style={{ marginRight: 'var(--space-2)' }} />
-                        Synthèse Bénéfice - {filterMonth}
+                        Synthèse Bénéfice - du {startDate} au {endDate}
                     </h3>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 'var(--space-6)' }}>
