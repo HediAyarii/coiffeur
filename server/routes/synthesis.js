@@ -209,10 +209,17 @@ router.get('/benefice', async (req, res) => {
         // Determine if using date range or month
         const useDateRange = start_date && end_date;
         
-        // For month-based calculations, extract from start_date or month param
+        // For month-based calculations
         let year, monthNum, targetDate, filterMonth;
+        // For multi-month ranges
+        let startYear, startMonth, endYear, endMonth;
         if (useDateRange) {
             const [sy, sm] = start_date.split('-').map(Number);
+            const [ey, em] = end_date.split('-').map(Number);
+            startYear = sy;
+            startMonth = sm;
+            endYear = ey;
+            endMonth = em;
             year = sy;
             monthNum = sm;
             targetDate = end_date;
@@ -222,9 +229,19 @@ router.get('/benefice', async (req, res) => {
                 return res.status(400).json({ error: 'Month parameter or date range is required' });
             }
             [year, monthNum] = month.split('-').map(Number);
+            startYear = year;
+            startMonth = monthNum;
+            endYear = year;
+            endMonth = monthNum;
             targetDate = `${month}-01`;
             filterMonth = month;
         }
+        
+        // Calculate year-month range values for salary_costs queries
+        const startYM = startYear * 100 + startMonth;
+        const endYM = endYear * 100 + endMonth;
+        const startFilterMonth = `${startYear}-${String(startMonth).padStart(2, '0')}`;
+        const endFilterMonth = `${endYear}-${String(endMonth).padStart(2, '0')}`;
         
         // 1. Get CA totals (CB and Cash)
         let caResult;
@@ -252,14 +269,14 @@ router.get('/benefice', async (req, res) => {
         // 2. Calculate TVA CB (20% included in price)
         const tvaCB = Math.round(totalCB * 0.20 / 1.20 * 100) / 100;
         
-        // 3. Get declared cash and TVA on declared (uses month)
+        // 3. Get declared cash and TVA on declared
         const declaredResult = await pool.query(`
             SELECT 
                 COALESCE(SUM(declared_amount), 0) as total_declared,
                 COALESCE(SUM(vat_amount), 0) as total_vat_declared
             FROM declared_cash
-            WHERE month = $1
-        `, [filterMonth]);
+            WHERE month >= $1 AND month <= $2
+        `, [startFilterMonth, endFilterMonth]);
         
         const totalDeclared = parseFloat(declaredResult.rows[0].total_declared) || 0;
         const tvaEspeces = parseFloat(declaredResult.rows[0].total_vat_declared) || 0;
@@ -352,8 +369,8 @@ router.get('/benefice', async (req, res) => {
                 ), 0) as total_charges_entreprise
             FROM salary_costs sc
             LEFT JOIN hairdressers h ON sc.hairdresser_id = h.id
-            WHERE sc.month = $1 AND sc.year = $2
-        `, [monthNum, year]);
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+        `, [startYM, endYM]);
         
         const chargesEntreprise = parseFloat(chargesEntrepriseResult.rows[0].total_charges_entreprise) || 0;
         
@@ -434,46 +451,78 @@ router.get('/benefice', async (req, res) => {
         const ventesProduitsEspeces = parseFloat(productSalesResult.rows[0].ventes_produits_especes) || 0;
         const ventesProduitsCB = parseFloat(productSalesResult.rows[0].ventes_produits_cb) || 0;
         
-        // 10. Get reste à payer (unpaid salary amounts)
+        // 10. Get individual reste à payer per employee to find negative ones
         const resteAPayerResult = await pool.query(`
             SELECT 
-                COALESCE(SUM(
-                    sc.net_salary 
-                    - (sc.charges * (1 - COALESCE(h.tax_percentage, 0) / 100))
-                    + COALESCE(rev.total_revenue, 0)
-                    - COALESCE(paid.total_paid, 0)
-                ), 0) as total_reste_a_payer
+                sc.id,
+                sc.net_salary,
+                sc.charges,
+                sc.month as sc_month,
+                sc.year as sc_year,
+                COALESCE(h.tax_percentage, 0) as tax_percentage,
+                COALESCE(rev.total_revenue, 0) as generated_revenue,
+                COALESCE(paid.total_paid, 0) as total_paid,
+                COALESCE(equip.total_equip, 0) as total_equip
             FROM salary_costs sc
             LEFT JOIN hairdressers h ON sc.hairdresser_id = h.id
             LEFT JOIN (
-                SELECT hairdresser_id, SUM(price_coiffeur) as total_revenue
+                SELECT hairdresser_id,
+                       EXTRACT(MONTH FROM service_date_time)::int as m,
+                       EXTRACT(YEAR FROM service_date_time)::int as y,
+                       SUM(price_coiffeur) as total_revenue
                 FROM service_history
-                WHERE EXTRACT(MONTH FROM service_date_time) = $1
-                  AND EXTRACT(YEAR FROM service_date_time) = $2
-                GROUP BY hairdresser_id
-            ) rev ON sc.hairdresser_id = rev.hairdresser_id
+                WHERE (EXTRACT(YEAR FROM service_date_time)::int * 100 + EXTRACT(MONTH FROM service_date_time)::int) >= $1
+                  AND (EXTRACT(YEAR FROM service_date_time)::int * 100 + EXTRACT(MONTH FROM service_date_time)::int) <= $2
+                GROUP BY hairdresser_id, m, y
+            ) rev ON sc.hairdresser_id = rev.hairdresser_id AND sc.month = rev.m AND sc.year = rev.y
             LEFT JOIN (
                 SELECT salary_cost_id, SUM(amount) as total_paid
                 FROM salary_payments
                 GROUP BY salary_cost_id
             ) paid ON sc.id = paid.salary_cost_id
-            WHERE sc.month = $1 AND sc.year = $2
-        `, [monthNum, year]);
+            LEFT JOIN (
+                SELECT hairdresser_id, month as m, year as y, SUM(amount) as total_equip
+                FROM hairdresser_equipment_purchases
+                GROUP BY hairdresser_id, month, year
+            ) equip ON sc.hairdresser_id = equip.hairdresser_id AND sc.month = equip.m AND sc.year = equip.y
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+        `, [startYM, endYM]);
         
-        // 10b. Get equipment purchases total for the month (to subtract from reste a payer)
+        // Calculate reste à payer per employee and sum negative ones
+        let totalSalaireNegatif = 0;
+        for (const row of resteAPayerResult.rows) {
+            const charges = parseFloat(row.charges) || 0;
+            const taxPercent = parseFloat(row.tax_percentage) || 0;
+            const netSalary = parseFloat(row.net_salary) || 0;
+            const generatedRevenue = parseFloat(row.generated_revenue) || 0;
+            const totalPaid = parseFloat(row.total_paid) || 0;
+            const totalEquip = parseFloat(row.total_equip) || 0;
+            
+            let chargeTechnicien = 0;
+            if (taxPercent === 0) chargeTechnicien = charges;
+            else if (taxPercent === 50) chargeTechnicien = charges / 2;
+            else if (taxPercent === 100) chargeTechnicien = 0;
+            else chargeTechnicien = charges * (1 - taxPercent / 100);
+            
+            const resteAPayer = generatedRevenue - chargeTechnicien - netSalary - totalPaid - totalEquip;
+            
+            if (resteAPayer < 0) {
+                totalSalaireNegatif += Math.abs(resteAPayer);
+            }
+        }
+        
+        // 10b. Get equipment purchases total for the date range
         const equipmentResult = await pool.query(`
             SELECT COALESCE(SUM(amount), 0) as total_equipment
             FROM hairdresser_equipment_purchases
-            WHERE month = $1 AND year = $2
-        `, [monthNum, year]);
+            WHERE (year * 100 + month) >= $1 AND (year * 100 + month) <= $2
+        `, [startYM, endYM]);
         
         const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
         
-        const resteAPayer = Math.max(0, (parseFloat(resteAPayerResult.rows[0].total_reste_a_payer) || 0) - totalEquipment);
-        
         // Calculate benefices
-        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB
-        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB;
+        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs
+        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif;
         // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
         const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
         
@@ -490,19 +539,19 @@ router.get('/benefice', async (req, res) => {
             charges_entreprise: chargesEntreprise,
             tva_recuperable: tvaRecuperable,
             ventes_produits_cb: ventesProduitsCB,
+            salaire_negatif: totalSalaireNegatif,
             cb_benefice: cbBenefice,
             // Especes data
             total_cash: totalCash,
             total_declared: totalDeclared,
-            reste_a_payer: resteAPayer,
             total_salaires_especes: totalSalairesEspeces,
             ventes_produits_especes: ventesProduitsEspeces,
             total_equipment: totalEquipment,
             espece_benefice: especeBenefice
         });
     } catch (error) {
-        console.error('Error fetching benefice:', error);
-        res.status(500).json({ error: 'Erreur serveur' });
+        console.error('Error fetching benefice:', error.message, error.stack);
+        res.status(500).json({ error: 'Erreur serveur', detail: error.message });
     }
 });
 

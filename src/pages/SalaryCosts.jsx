@@ -605,15 +605,15 @@ const SalaryCosts = () => {
                 }
                 
                 // Reste à payer = Recette Générée - Charge Technicien - Salaire Net - Paiements effectués - Matériel
-                const resteAPayer = Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction);
+                const resteAPayer = generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction;
                 
                 return (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                         <div>
                             <span style={{ 
                                 fontWeight: 700, 
-                                color: resteAPayer > 0 ? 'var(--color-warning)' : 'var(--color-success)',
-                                background: resteAPayer > 0 ? 'var(--color-warning-bg)' : 'var(--color-success-bg)',
+                                color: resteAPayer > 0 ? 'var(--color-warning)' : resteAPayer < 0 ? 'var(--color-error)' : 'var(--color-success)',
+                                background: resteAPayer > 0 ? 'var(--color-warning-bg)' : resteAPayer < 0 ? 'var(--color-error-bg)' : 'var(--color-success-bg)',
                                 padding: '4px 8px',
                                 borderRadius: 'var(--radius-md)'
                             }}>
