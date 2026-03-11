@@ -517,6 +517,10 @@ const Synthesis = () => {
                                     <span>+ Ventes Produits CB</span>
                                     <span>{formatCurrency(beneficeData.ventes_produits_cb)}</span>
                                 </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
+                                    <span>+ Espèces déclaré</span>
+                                    <span>{formatCurrency(beneficeData.total_declared)}</span>
+                                </div>
                                 {beneficeData.salaire_negatif > 0 && (
                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
                                         <span>- Salaires négatifs</span>

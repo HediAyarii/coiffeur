@@ -281,30 +281,39 @@ router.get('/benefice', async (req, res) => {
         const totalDeclared = parseFloat(declaredResult.rows[0].total_declared) || 0;
         const tvaEspeces = parseFloat(declaredResult.rows[0].total_vat_declared) || 0;
         
-        // 4. Get total salary payments by virement AND cheque (based on payment_date)
-        let virementChequeResult;
+        // 4. Get total virement = Total Net (salary_costs) - Net salary of COIF-011
+        const virementResult = await pool.query(`
+            SELECT 
+                COALESCE(SUM(sc.net_salary), 0) as total_net,
+                COALESCE(SUM(CASE WHEN h.matricule = 'COIF-011' THEN sc.net_salary ELSE 0 END), 0) as net_coif011
+            FROM salary_costs sc
+            LEFT JOIN hairdressers h ON sc.hairdresser_id = h.id
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+        `, [startYM, endYM]);
+        
+        const totalNetSalary = parseFloat(virementResult.rows[0].total_net) || 0;
+        const netCoif011 = parseFloat(virementResult.rows[0].net_coif011) || 0;
+        const totalVirement = totalNetSalary - netCoif011;
+        
+        // 4a. Get total salary payments by cheque (based on payment_date)
+        let chequeResult;
         if (useDateRange) {
-            virementChequeResult = await pool.query(`
-                SELECT 
-                    COALESCE(SUM(CASE WHEN sp.payment_method = 'virement' THEN sp.amount ELSE 0 END), 0) as total_virement,
-                    COALESCE(SUM(CASE WHEN sp.payment_method = 'cheque' THEN sp.amount ELSE 0 END), 0) as total_cheque
+            chequeResult = await pool.query(`
+                SELECT COALESCE(SUM(sp.amount), 0) as total_cheque
                 FROM salary_payments sp
                 WHERE DATE(sp.payment_date) >= $1 AND DATE(sp.payment_date) <= $2
-                  AND sp.payment_method IN ('virement', 'cheque')
+                  AND sp.payment_method = 'cheque'
             `, [start_date, end_date]);
         } else {
-            virementChequeResult = await pool.query(`
-                SELECT 
-                    COALESCE(SUM(CASE WHEN sp.payment_method = 'virement' THEN sp.amount ELSE 0 END), 0) as total_virement,
-                    COALESCE(SUM(CASE WHEN sp.payment_method = 'cheque' THEN sp.amount ELSE 0 END), 0) as total_cheque
+            chequeResult = await pool.query(`
+                SELECT COALESCE(SUM(sp.amount), 0) as total_cheque
                 FROM salary_payments sp
                 WHERE TO_CHAR(sp.payment_date, 'YYYY-MM') = $1
-                  AND sp.payment_method IN ('virement', 'cheque')
+                  AND sp.payment_method = 'cheque'
             `, [filterMonth]);
         }
         
-        const totalVirement = parseFloat(virementChequeResult.rows[0].total_virement) || 0;
-        const totalCheque = parseFloat(virementChequeResult.rows[0].total_cheque) || 0;
+        const totalCheque = parseFloat(chequeResult.rows[0].total_cheque) || 0;
         
         // 4b. Get total salary payments by especes (based on payment_date)
         let especesPaymentResult;
@@ -521,8 +530,8 @@ router.get('/benefice', async (req, res) => {
         const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
         
         // Calculate benefices
-        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs
-        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif;
+        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
+        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
         // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
         const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
         
