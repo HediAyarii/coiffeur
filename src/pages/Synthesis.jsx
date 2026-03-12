@@ -464,7 +464,7 @@ const Synthesis = () => {
                     </h3>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 'var(--space-6)' }}>
-                        {/* CB Bénéfice */}
+                        {/* Compte */}
                         <div style={{ 
                             background: 'var(--color-bg-secondary)', 
                             borderRadius: 'var(--radius-lg)', 
@@ -473,7 +473,7 @@ const Synthesis = () => {
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
                                 <CreditCard size={20} style={{ color: 'var(--color-info)' }} />
-                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Bénéfice CB</h4>
+                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Compte</h4>
                             </div>
                             
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -536,7 +536,7 @@ const Synthesis = () => {
                                     fontWeight: 700,
                                     fontSize: 'var(--font-size-lg)'
                                 }}>
-                                    <span>= CB Bénéfice</span>
+                                    <span>= Compte</span>
                                     <span style={{ color: beneficeData.cb_benefice >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
                                         {formatCurrency(beneficeData.cb_benefice)}
                                     </span>
@@ -544,7 +544,7 @@ const Synthesis = () => {
                             </div>
                         </div>
 
-                        {/* Espèces Bénéfice */}
+                        {/* Espèces */}
                         <div style={{ 
                             background: 'var(--color-bg-secondary)', 
                             borderRadius: 'var(--radius-lg)', 
@@ -553,7 +553,7 @@ const Synthesis = () => {
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
                                 <Banknote size={20} style={{ color: 'var(--color-warning)' }} />
-                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Bénéfice Espèces</h4>
+                                <h4 style={{ margin: 0, fontSize: 'var(--font-size-lg)' }}>Espèces</h4>
                             </div>
                             
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -582,7 +582,7 @@ const Synthesis = () => {
                                     fontWeight: 700,
                                     fontSize: 'var(--font-size-lg)'
                                 }}>
-                                    <span>= Espèces Bénéfice</span>
+                                    <span>= Espèces</span>
                                     <span style={{ color: beneficeData.espece_benefice >= 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
                                         {formatCurrency(beneficeData.espece_benefice)}
                                     </span>
@@ -591,27 +591,67 @@ const Synthesis = () => {
                         </div>
                     </div>
 
-                    {/* Total Bénéfice */}
-                    <div style={{ 
-                        marginTop: 'var(--space-5)',
-                        padding: 'var(--space-4)',
-                        background: 'linear-gradient(135deg, var(--color-primary-500), var(--color-accent-500))',
-                        borderRadius: 'var(--radius-lg)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                    }}>
-                        <span style={{ color: 'white', fontWeight: 600, fontSize: 'var(--font-size-lg)' }}>
-                            BÉNÉFICE TOTAL
-                        </span>
-                        <span style={{ 
-                            color: 'white', 
-                            fontWeight: 700, 
-                            fontSize: 'var(--font-size-2xl)'
-                        }}>
-                            {formatCurrency(beneficeData.cb_benefice + beneficeData.espece_benefice)}
-                        </span>
-                    </div>
+                    {/* Total = Compte + Espèces */}
+                    {(() => {
+                        const total = beneficeData.cb_benefice + beneficeData.espece_benefice;
+                        const zubaier = total / 2;
+                        const mohamed = total / 2 - (beneficeData.net_coif011 || 0);
+                        return (
+                            <div style={{ 
+                                marginTop: 'var(--space-5)',
+                                background: 'var(--color-bg-secondary)',
+                                borderRadius: 'var(--radius-lg)',
+                                padding: 'var(--space-5)',
+                                border: '2px solid var(--color-border)'
+                            }}>
+                                <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    paddingBottom: 'var(--space-4)',
+                                    borderBottom: '2px solid var(--color-border)',
+                                    marginBottom: 'var(--space-4)'
+                                }}>
+                                    <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xl)' }}>Total</span>
+                                    <span style={{ 
+                                        fontWeight: 700, 
+                                        fontSize: 'var(--font-size-xl)',
+                                        color: total >= 0 ? 'var(--color-success)' : 'var(--color-error)'
+                                    }}>
+                                        {formatCurrency(total)}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-base)' }}>Zubaier</span>
+                                        <span style={{ 
+                                            fontWeight: 600, 
+                                            fontSize: 'var(--font-size-lg)',
+                                            color: zubaier >= 0 ? 'var(--color-success)' : 'var(--color-error)'
+                                        }}>
+                                            {formatCurrency(zubaier)}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: '-8px' }}>
+                                        Total / 2
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-base)' }}>Mohamed</span>
+                                        <span style={{ 
+                                            fontWeight: 600, 
+                                            fontSize: 'var(--font-size-lg)',
+                                            color: mohamed >= 0 ? 'var(--color-success)' : 'var(--color-error)'
+                                        }}>
+                                            {formatCurrency(mohamed)}
+                                        </span>
+                                    </div>
+                                    <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: '-8px' }}>
+                                        Total / 2 - Salaire net CHIKHA MOHAMED ({formatCurrency(beneficeData.net_coif011 || 0)})
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
         </div>

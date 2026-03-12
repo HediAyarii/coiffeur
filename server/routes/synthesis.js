@@ -556,7 +556,8 @@ router.get('/benefice', async (req, res) => {
             total_salaires_especes: totalSalairesEspeces,
             ventes_produits_especes: ventesProduitsEspeces,
             total_equipment: totalEquipment,
-            espece_benefice: especeBenefice
+            espece_benefice: especeBenefice,
+            net_coif011: netCoif011
         });
     } catch (error) {
         console.error('Error fetching benefice:', error.message, error.stack);
