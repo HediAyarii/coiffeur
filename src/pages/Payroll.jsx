@@ -143,7 +143,7 @@ const Payroll = () => {
             chargeTechnicien = charges * (1 - taxPercent / 100);
         }
         
-        return Math.max(0, generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction);
+        return Math.max(0, Math.round((generatedRevenue - chargeTechnicien - netSalary - totalPaid - equipDeduction) * 100) / 100);
     };
 
     // Get payment status
@@ -151,9 +151,9 @@ const Payroll = () => {
         const resteAPayer = calculateResteAPayer(row);
         const totalPaid = paymentTotals[row.id] || 0;
         
-        if (resteAPayer === 0) return 'paid';
-        if (totalPaid === 0 && resteAPayer > 0) return 'pending';
-        if (resteAPayer > 0) return 'partial';
+        if (resteAPayer <= 0.01) return 'paid';
+        if (totalPaid === 0 && resteAPayer > 0.01) return 'pending';
+        if (resteAPayer > 0.01) return 'partial';
         return 'paid';
     };
 
