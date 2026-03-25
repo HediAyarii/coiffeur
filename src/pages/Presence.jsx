@@ -395,7 +395,7 @@ const Presence = () => {
                             borderRadius: 'var(--radius-lg)'
                         }}>
                             <div style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-success)' }}>
-                                {periodTotals.salon.toFixed(0)} €
+                                {periodTotals.salon.toFixed(2)} €
                             </div>
                             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>Salon</div>
                         </div>
@@ -406,7 +406,7 @@ const Presence = () => {
                             borderRadius: 'var(--radius-lg)'
                         }}>
                             <div style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-accent-400)' }}>
-                                {periodTotals.coiffeurs.toFixed(0)} €
+                                {periodTotals.coiffeurs.toFixed(2)} €
                             </div>
                             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>Coiffeurs</div>
                         </div>
@@ -498,7 +498,7 @@ const Presence = () => {
                                                     Salon
                                                 </div>
                                                 <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-success)' }}>
-                                                    {stats.totalSalon.toFixed(0)} €
+                                                    {stats.totalSalon.toFixed(2)} €
                                                 </div>
                                             </div>
                                             <div style={{ textAlign: 'center' }}>
@@ -506,7 +506,7 @@ const Presence = () => {
                                                     Coiffeur
                                                 </div>
                                                 <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-accent-400)' }}>
-                                                    {stats.totalCoiffeur.toFixed(0)} €
+                                                    {stats.totalCoiffeur.toFixed(2)} €
                                                 </div>
                                             </div>
                                         </div>
@@ -581,10 +581,10 @@ const Presence = () => {
                                                                 )}
                                                             </td>
                                                             <td style={{ padding: 'var(--space-2)', textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>
-                                                                {parseFloat(s.price_salon).toFixed(0)} €
+                                                                {parseFloat(s.price_salon).toFixed(2)} €
                                                             </td>
                                                             <td style={{ padding: 'var(--space-2)', textAlign: 'right', color: 'var(--color-accent-400)', fontWeight: 600 }}>
-                                                                {parseFloat(s.price_coiffeur).toFixed(0)} €
+                                                                {parseFloat(s.price_coiffeur).toFixed(2)} €
                                                             </td>
                                                             <td style={{ padding: 'var(--space-2)' }}>
                                                                 <button
