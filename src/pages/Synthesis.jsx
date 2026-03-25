@@ -485,6 +485,10 @@ const Synthesis = () => {
                                     <span>{formatCurrency(beneficeData.total_cheque)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                    <span>- Reste à payer (virement)</span>
+                                    <span>{formatCurrency(beneficeData.total_virement_payments)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
                                     <span>- Charges fixes</span>
                                     <span>{formatCurrency(beneficeData.charges_fixes)}</span>
                                 </div>

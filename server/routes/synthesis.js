@@ -323,6 +323,17 @@ router.get('/benefice', async (req, res) => {
         
         const totalSalairesEspeces = parseFloat(especesPaymentResult.rows[0].total_especes) || 0;
         
+        // 4c. Get total salary payments by virement (reste à payer paid by bank transfer)
+        const virementPaymentResult = await pool.query(`
+            SELECT COALESCE(SUM(sp.amount), 0) as total_virement_payments
+            FROM salary_payments sp
+            JOIN salary_costs sc ON sp.salary_cost_id = sc.id
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+              AND sp.payment_method = 'virement'
+        `, [startYM, endYM]);
+        
+        const totalVirementPayments = parseFloat(virementPaymentResult.rows[0].total_virement_payments) || 0;
+        
         // 5. Get variable expenses (charges variables)
         let variableExpensesResult;
         if (useDateRange) {
@@ -518,8 +529,8 @@ router.get('/benefice', async (req, res) => {
         const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
         
         // Calculate benefices
-        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
-        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
+        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque paiements - Virement paiements - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
+        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - totalVirementPayments - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
         // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
         const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
         
@@ -531,6 +542,7 @@ router.get('/benefice', async (req, res) => {
             tva_especes: tvaEspeces,
             total_virement: totalVirement,
             total_cheque: totalCheque,
+            total_virement_payments: totalVirementPayments,
             charges_fixes: chargesFixes,
             charges_variables: chargesVariables,
             charges_entreprise: chargesEntreprise,
