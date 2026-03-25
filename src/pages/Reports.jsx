@@ -48,7 +48,8 @@ import {
     hairdressersAPI, 
     expensesAPI,
     fixedExpensesAPI,
-    salaryCostsAPI 
+    salaryCostsAPI,
+    synthesisAPI
 } from '../services/api';
 import { useDateFilter } from '../context/DateFilterContext';
 
@@ -107,59 +108,57 @@ const Reports = () => {
             const baseFilters = { start_date: startDate, end_date: endDate };
             if (selectedSalon) baseFilters.salon_id = selectedSalon;
             
-            // Get dashboard stats with filters
-            const dashboardData = await analyticsAPI.getDashboard(baseFilters);
+            // Use synthesisAPI (same data as Synthesis page) for consistent CA values
+            const synthesisData = await synthesisAPI.getSynthesis(startDate, endDate);
             
-            // Load expenses for the period
+            // Get benefice data (same as Synthesis page)
+            let beneficeData = null;
+            try {
+                beneficeData = await synthesisAPI.getBenefice(startDate, endDate);
+            } catch (e) {
+                console.error('Error loading benefice:', e);
+            }
+            
+            // Calculate totals from synthesis data (same as Synthesis.jsx)
+            let filteredData = synthesisData;
+            if (selectedSalon) {
+                filteredData = synthesisData.filter(s => s.salon_id === selectedSalon);
+            }
+            
+            const totals = filteredData.reduce((acc, salon) => ({
+                ca_cash: acc.ca_cash + parseFloat(salon.ca_cash || 0),
+                ca_card: acc.ca_card + parseFloat(salon.ca_card || 0),
+                ca_total: acc.ca_total + parseFloat(salon.ca_total || 0),
+                services_count: acc.services_count + parseInt(salon.services_count || 0)
+            }), { ca_cash: 0, ca_card: 0, ca_total: 0, services_count: 0 });
+            
+            const periodRevenue = totals.ca_total;
+            const monthServices = totals.services_count;
+            
+            // Use benefice data for consistent results with Synthesis page
+            let netProfit = 0;
             let totalExpenses = 0;
             let fixedTotal = 0;
             let variableTotal = 0;
             let salariesTotal = 0;
-
-            try {
-                // Fixed expenses - use start date month for now
-                const [year, monthNum] = startDate.split('-');
-                const fixedParams = { month: `${year}-${monthNum}` };
-                if (selectedSalon) fixedParams.salon_id = selectedSalon;
-                const fixed = await fixedExpensesAPI.getAll(fixedParams);
-                fixedTotal = fixed.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-
-                // Variable expenses - filter by date range
-                let vars = await expensesAPI.getAll();
-                if (selectedSalon) {
-                    vars = vars.filter(e => e.salon_id === selectedSalon);
-                }
-                vars = vars.filter(e => {
-                    if (!e.date) return false;
-                    const d = e.date.split('T')[0];
-                    return d >= startDate && d <= endDate;
-                });
-                variableTotal = vars.filter(e => e.type === 'variable')
-                    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-
-                // Salary costs - use start date month and year
-                try {
-                    const salaries = await salaryCostsAPI.getAll({ 
-                        month: parseInt(monthNum), 
-                        year: parseInt(year) 
-                    });
-                    salariesTotal = salaries.reduce((sum, s) => sum + parseFloat(s.total_cost || 0), 0);
-                } catch (e) {
-                    console.log('Salary costs not available');
-                }
-
-                totalExpenses = fixedTotal + variableTotal + salariesTotal;
-            } catch (e) {
-                console.error('Error loading expenses:', e);
+            
+            if (beneficeData) {
+                // Calculate total benefice (same as Synthesis page)
+                const cbBenefice = parseFloat(beneficeData.cb_benefice || 0);
+                const especeBenefice = parseFloat(beneficeData.espece_benefice || 0);
+                netProfit = cbBenefice + especeBenefice;
+                
+                // Get expense breakdown from benefice data
+                fixedTotal = parseFloat(beneficeData.charges_fixes || 0);
+                variableTotal = parseFloat(beneficeData.charges_variables || 0);
+                salariesTotal = parseFloat(beneficeData.total_virement || 0) + 
+                               parseFloat(beneficeData.total_cheque || 0);
+                totalExpenses = fixedTotal + variableTotal + salariesTotal + 
+                               parseFloat(beneficeData.charges_entreprise || 0);
             }
 
             setExpensesData({ fixed: fixedTotal, variable: variableTotal, salaries: salariesTotal });
 
-            // Calculate period revenue from dashboard data
-            const periodRevenue = dashboardData.monthRevenue || 0;
-            const monthServices = dashboardData.monthServices || 0;
-
-            const netProfit = periodRevenue - totalExpenses;
             const profitMargin = periodRevenue > 0 ? (netProfit / periodRevenue) * 100 : 0;
 
             setStats({
@@ -167,41 +166,43 @@ const Reports = () => {
                 totalExpenses,
                 netProfit,
                 totalServices: monthServices,
-                avgTicket: dashboardData.avgTicket || (monthServices > 0 ? periodRevenue / monthServices : 0),
+                avgTicket: monthServices > 0 ? periodRevenue / monthServices : 0,
                 profitMargin
             });
+            
+            // Set payment data from synthesis totals
+            const cashTotal = totals.ca_cash;
+            const cardTotal = totals.ca_card;
+            const paymentTotal = cashTotal + cardTotal;
+            setPaymentData([
+                { 
+                    name: 'Espèces', 
+                    value: cashTotal, 
+                    percentage: paymentTotal > 0 ? (cashTotal / paymentTotal * 100).toFixed(1) : 0
+                },
+                { 
+                    name: 'Carte', 
+                    value: cardTotal,
+                    percentage: paymentTotal > 0 ? (cardTotal / paymentTotal * 100).toFixed(1) : 0
+                }
+            ]);
+
+            // Revenue by salon from synthesis data
+            const salonRevenue = synthesisData.map(s => ({
+                name: s.salon_name,
+                revenue: parseFloat(s.ca_total || 0),
+                cash: parseFloat(s.ca_cash || 0),
+                card: parseFloat(s.ca_card || 0)
+            })).filter(s => s.revenue > 0);
+            setSalonData(salonRevenue);
 
             // Revenue over time (daily for selected date range)
             const dailyRevenue = await analyticsAPI.getDailyRevenue(baseFilters);
             setRevenueData(dailyRevenue);
 
-            // Revenue by salon
-            const salonRevenue = await analyticsAPI.getRevenueBySalon({ start_date: startDate, end_date: endDate });
-            setSalonData(salonRevenue.filter(s => s.revenue > 0));
-
             // Service breakdown
             const breakdown = await analyticsAPI.getServiceBreakdown(baseFilters);
             setServiceData(breakdown.slice(0, 8));
-
-            // Payment methods
-            const pmStats = await analyticsAPI.getPaymentMethods(baseFilters);
-            const cashTotal = pmStats.cash?.total || 0;
-            const cardTotal = pmStats.card?.total || 0;
-            const total = cashTotal + cardTotal;
-            setPaymentData([
-                { 
-                    name: 'Espèces', 
-                    value: cashTotal, 
-                    count: pmStats.cash?.count || 0,
-                    percentage: total > 0 ? (cashTotal / total * 100).toFixed(1) : 0
-                },
-                { 
-                    name: 'Carte', 
-                    value: cardTotal, 
-                    count: pmStats.card?.count || 0,
-                    percentage: total > 0 ? (cardTotal / total * 100).toFixed(1) : 0
-                }
-            ]);
 
             // Top hairdressers
             const topHdFilters = { limit: 5, ...baseFilters };
@@ -547,9 +548,9 @@ const Reports = () => {
                             <PieChart>
                                 <Pie
                                     data={[
-                                        { name: 'Charges fixes', value: expensesData.fixed },
-                                        { name: 'Variables', value: expensesData.variable },
-                                        { name: 'Salaires', value: expensesData.salaries }
+                                        { name: 'Charges fixes', value: expensesData.fixed, color: EXPENSE_COLORS[0] },
+                                        { name: 'Variables', value: expensesData.variable, color: EXPENSE_COLORS[1] },
+                                        { name: 'Salaires', value: expensesData.salaries, color: EXPENSE_COLORS[2] }
                                     ].filter(d => d.value > 0)}
                                     cx="50%"
                                     cy="50%"
@@ -558,8 +559,12 @@ const Reports = () => {
                                     paddingAngle={3}
                                     dataKey="value"
                                 >
-                                    {[0, 1, 2].map((index) => (
-                                        <Cell key={`cell-${index}`} fill={EXPENSE_COLORS[index]} />
+                                    {[
+                                        { name: 'Charges fixes', value: expensesData.fixed, color: EXPENSE_COLORS[0] },
+                                        { name: 'Variables', value: expensesData.variable, color: EXPENSE_COLORS[1] },
+                                        { name: 'Salaires', value: expensesData.salaries, color: EXPENSE_COLORS[2] }
+                                    ].filter(d => d.value > 0).map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
                                     ))}
                                 </Pie>
                                 <Tooltip formatter={(value) => formatCurrency(value)} />

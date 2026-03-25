@@ -28,7 +28,9 @@ router.get('/', async (req, res) => {
                         -- CA CB
                         COALESCE(SUM(CASE WHEN sh.payment_method = 'card' THEN sh.price_salon ELSE 0 END), 0) as ca_card,
                         -- CA Général
-                        COALESCE(SUM(sh.price_salon), 0) as ca_total
+                        COALESCE(SUM(sh.price_salon), 0) as ca_total,
+                        -- Nombre de services
+                        COUNT(sh.id) as services_count
                     FROM salons s
                     LEFT JOIN service_history sh ON sh.salon_id = s.id 
                         AND DATE(sh.service_date_time) >= $1 AND DATE(sh.service_date_time) <= $2
@@ -70,6 +72,7 @@ router.get('/', async (req, res) => {
                     sr.ca_cash,
                     sr.ca_card,
                     sr.ca_total,
+                    sr.services_count,
                     -- TVA sur CA CB (20%)
                     ROUND(sr.ca_card * 0.20 / 1.20, 2) as vat_on_card,
                     -- TVA récupérable totale
@@ -96,7 +99,9 @@ router.get('/', async (req, res) => {
                     -- CA CB
                     COALESCE(SUM(CASE WHEN sh.payment_method = 'card' THEN sh.price_salon ELSE 0 END), 0) as ca_card,
                     -- CA Général
-                    COALESCE(SUM(sh.price_salon), 0) as ca_total
+                    COALESCE(SUM(sh.price_salon), 0) as ca_total,
+                    -- Nombre de services
+                    COUNT(sh.id) as services_count
                 FROM salons s
                 LEFT JOIN service_history sh ON sh.salon_id = s.id 
                     AND TO_CHAR(sh.service_date_time, 'YYYY-MM') = $1
@@ -138,6 +143,7 @@ router.get('/', async (req, res) => {
                 sr.ca_cash,
                 sr.ca_card,
                 sr.ca_total,
+                sr.services_count,
                 -- TVA sur CA CB (20%)
                 ROUND(sr.ca_card * 0.20 / 1.20, 2) as vat_on_card,
                 -- TVA récupérable totale
