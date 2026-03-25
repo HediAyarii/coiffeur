@@ -23,15 +23,17 @@ import {
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
 import { salaryCostsAPI, salaryPaymentsAPI, equipmentPurchasesAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Payroll = () => {
+    const { startDate, endDate, getYearMonth } = useDateFilter();
+    const { year: selectedYear, month: selectedMonth } = getYearMonth();
+    
     // Data states
     const [salaryCosts, setSalaryCosts] = useState([]);
     const [availableMonths, setAvailableMonths] = useState([]);
 
     // Filter states
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [filterStatus, setFilterStatus] = useState('all'); // all, paid, pending, overpaid
 
     // UI states
@@ -306,28 +308,23 @@ const Payroll = () => {
                     </p>
                 </div>
 
-                {/* Month/Year Selector */}
-                <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-                    <select
-                        className="form-select"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                        style={{ minWidth: 140 }}
-                    >
-                        {monthNames.map((name, idx) => (
-                            <option key={idx} value={idx + 1}>{name}</option>
-                        ))}
-                    </select>
-                    <select
-                        className="form-select"
-                        value={selectedYear}
-                        onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                        style={{ minWidth: 100 }}
-                    >
-                        {[2024, 2025, 2026].map(year => (
-                            <option key={year} value={year}>{year}</option>
-                        ))}
-                    </select>
+                {/* Period display */}
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-2) var(--space-3)',
+                    background: 'var(--color-primary-50)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--color-primary-700)',
+                    fontWeight: 500,
+                    fontSize: 'var(--font-size-sm)'
+                }}>
+                    <Calendar size={16} />
+                    <span>
+                        {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    </span>
                 </div>
             </div>
 

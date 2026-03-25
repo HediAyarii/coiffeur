@@ -5,8 +5,12 @@ import {
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
 import { expensesAPI, fixedExpensesAPI, salonsAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Expenses = () => {
+    const { startDate, endDate, getMonth } = useDateFilter();
+    const filterMonth = getMonth(); // YYYY-MM from startDate
+    
     // Variable expenses
     const [variableExpenses, setVariableExpenses] = useState([]);
     // Fixed expenses (recurring)
@@ -26,7 +30,6 @@ const Expenses = () => {
     
     // Filters
     const [filterSalon, setFilterSalon] = useState('');
-    const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
     const [activeTab, setActiveTab] = useState('all'); // 'all', 'fixed', 'variable'
     
     const [loading, setLoading] = useState(true);
@@ -690,15 +693,27 @@ const Expenses = () => {
             <div className="grid grid-cols-3" style={{ marginBottom: 'var(--space-6)' }}>
                 <div className="card" style={{ gridColumn: 'span 2' }}>
                     <h3 className="card-title" style={{ marginBottom: 'var(--space-4)' }}>Filtres</h3>
-                    <div style={{ display: 'flex', gap: 'var(--space-4)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-end' }}>
+                        {/* Period display */}
                         <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                            <label className="form-label">Mois</label>
-                            <input
-                                type="month"
-                                className="form-input"
-                                value={filterMonth}
-                                onChange={(e) => setFilterMonth(e.target.value)}
-                            />
+                            <label className="form-label">Période</label>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--space-2)',
+                                padding: 'var(--space-2) var(--space-3)',
+                                background: 'var(--color-primary-50)',
+                                borderRadius: 'var(--radius-md)',
+                                color: 'var(--color-primary-700)',
+                                fontWeight: 500,
+                                fontSize: 'var(--font-size-sm)'
+                            }}>
+                                <Calendar size={16} />
+                                <span>
+                                    {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                                </span>
+                            </div>
                         </div>
                         <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
                             <label className="form-label">Salon</label>

@@ -7,8 +7,12 @@ import {
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
 import { productsAPI, productCategoriesAPI, salonsAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Products = () => {
+    const { startDate, endDate, getMonth } = useDateFilter();
+    const selectedMonth = getMonth(); // YYYY-MM from startDate
+    
     // Data states
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -56,7 +60,6 @@ const Products = () => {
     // Sales states
     const [sales, setSales] = useState([]);
     const [salesSummary, setSalesSummary] = useState(null);
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [saleForm, setSaleForm] = useState({
         product_id: '',
@@ -327,22 +330,6 @@ const Products = () => {
                 console.error(err);
             }
         }
-    };
-
-    const changeMonth = (delta) => {
-        const [year, month] = selectedMonth.split('-').map(Number);
-        let newMonth = month + delta;
-        let newYear = year;
-        
-        if (newMonth > 12) {
-            newMonth = 1;
-            newYear++;
-        } else if (newMonth < 1) {
-            newMonth = 12;
-            newYear--;
-        }
-        
-        setSelectedMonth(`${newYear}-${String(newMonth).padStart(2, '0')}`);
     };
 
     const formatMonth = (monthStr) => {

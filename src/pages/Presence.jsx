@@ -24,8 +24,12 @@ import {
 } from 'lucide-react';
 import { Modal } from '../components/UI';
 import { transactionsAPI, hairdressersAPI, salonsAPI, servicesAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Presence = () => {
+    // Global date filter
+    const { startDate, endDate } = useDateFilter();
+    
     // Data states
     const [hairdressers, setHairdressers] = useState([]);
     const [salons, setSalons] = useState([]);
@@ -33,8 +37,6 @@ const Presence = () => {
     const [dailyServices, setDailyServices] = useState([]);
     
     // Filter states
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [filterSalonId, setFilterSalonId] = useState('');
     
     // UI states
@@ -97,39 +99,6 @@ const Presence = () => {
         } catch (err) {
             console.error('Error loading daily services:', err);
         }
-    };
-
-    const changeDate = (delta) => {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        start.setDate(start.getDate() + delta);
-        end.setDate(end.getDate() + delta);
-        setStartDate(start.toISOString().split('T')[0]);
-        setEndDate(end.toISOString().split('T')[0]);
-    };
-
-    const setToday = () => {
-        const today = new Date().toISOString().split('T')[0];
-        setStartDate(today);
-        setEndDate(today);
-    };
-
-    const setThisWeek = () => {
-        const today = new Date();
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - today.getDay() + 1);
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 6);
-        setStartDate(monday.toISOString().split('T')[0]);
-        setEndDate(sunday.toISOString().split('T')[0]);
-    };
-
-    const setThisMonth = () => {
-        const today = new Date();
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-        setStartDate(firstDay.toISOString().split('T')[0]);
-        setEndDate(lastDay.toISOString().split('T')[0]);
     };
 
     const isDateRange = startDate !== endDate;
@@ -339,37 +308,23 @@ const Presence = () => {
                     gap: 'var(--space-4)',
                     marginBottom: 'var(--space-4)'
                 }}>
-                    {/* Date Range */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                        <button className="btn btn-secondary btn-icon" onClick={() => changeDate(-1)}>
-                            <ChevronLeft size={20} />
-                        </button>
-
-                        <div>
-                            <label className="form-label" style={{ marginBottom: 4 }}>Du</label>
-                            <input
-                                type="date"
-                                className="form-input"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                style={{ width: '150px' }}
-                            />
-                        </div>
-
-                        <div>
-                            <label className="form-label" style={{ marginBottom: 4 }}>Au</label>
-                            <input
-                                type="date"
-                                className="form-input"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                style={{ width: '150px' }}
-                            />
-                        </div>
-
-                        <button className="btn btn-secondary btn-icon" onClick={() => changeDate(1)}>
-                            <ChevronRight size={20} />
-                        </button>
+                    {/* Period display */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)',
+                        padding: 'var(--space-2) var(--space-3)',
+                        background: 'var(--color-primary-50)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--color-primary-700)',
+                        fontWeight: 500,
+                        fontSize: 'var(--font-size-sm)'
+                    }}>
+                        <Calendar size={16} />
+                        <span>
+                            {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                        </span>
                     </div>
 
                     {/* Salon Filter */}
@@ -389,28 +344,6 @@ const Presence = () => {
                                 <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
                         </select>
-                    </div>
-
-                    {/* Quick Filters */}
-                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                        <button 
-                            className={`btn btn-sm ${!isDateRange && startDate === new Date().toISOString().split('T')[0] ? 'btn-primary' : 'btn-ghost'}`}
-                            onClick={setToday}
-                        >
-                            Aujourd'hui
-                        </button>
-                        <button 
-                            className="btn btn-ghost btn-sm"
-                            onClick={setThisWeek}
-                        >
-                            Cette semaine
-                        </button>
-                        <button 
-                            className="btn btn-ghost btn-sm"
-                            onClick={setThisMonth}
-                        >
-                            Ce mois
-                        </button>
                     </div>
                 </div>
 

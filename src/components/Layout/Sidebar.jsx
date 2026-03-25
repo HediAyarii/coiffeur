@@ -20,14 +20,17 @@ import {
     ChevronLeft,
     ChevronRight,
     Calculator,
-    UserCog
+    UserCog,
+    Calendar
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useDateFilter } from '../../context/DateFilterContext';
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, logout, isAdmin, isCoiffeur } = useAuth();
+    const { startDate, endDate, setStartDate, setEndDate, setToday, setThisWeek, setThisMonth, previousPeriod, nextPeriod } = useDateFilter();
 
     // Admin navigation sections
     const adminNavSections = [
@@ -106,6 +109,208 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
                         <span className="sidebar-logo-text">Coiffeur Pro</span>
                     </div>
                 </div>
+
+                {/* Date Filter Section */}
+                {!collapsed && (
+                    <div className="sidebar-date-filter" style={{
+                        padding: 'var(--space-3)',
+                        margin: '0 var(--space-2) var(--space-3)',
+                        background: 'var(--color-bg-secondary)',
+                        borderRadius: 'var(--radius-lg)',
+                        border: '1px solid var(--color-border)'
+                    }}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)',
+                            marginBottom: 'var(--space-2)',
+                            color: 'var(--color-primary-600)',
+                            fontWeight: 600,
+                            fontSize: 'var(--font-size-xs)'
+                        }}>
+                            <Calendar size={14} />
+                            <span>Période</span>
+                        </div>
+                        
+                        {/* Quick actions */}
+                        <div style={{
+                            display: 'flex',
+                            gap: 'var(--space-1)',
+                            marginBottom: 'var(--space-2)',
+                            flexWrap: 'wrap'
+                        }}>
+                            <button
+                                onClick={setToday}
+                                style={{
+                                    padding: '2px 6px',
+                                    fontSize: '10px',
+                                    background: 'var(--color-bg)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary)'
+                                }}
+                            >
+                                Aujourd'hui
+                            </button>
+                            <button
+                                onClick={setThisWeek}
+                                style={{
+                                    padding: '2px 6px',
+                                    fontSize: '10px',
+                                    background: 'var(--color-bg)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary)'
+                                }}
+                            >
+                                Semaine
+                            </button>
+                            <button
+                                onClick={setThisMonth}
+                                style={{
+                                    padding: '2px 6px',
+                                    fontSize: '10px',
+                                    background: 'var(--color-bg)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary)'
+                                }}
+                            >
+                                Mois
+                            </button>
+                        </div>
+
+                        {/* Navigation arrows */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 'var(--space-2)'
+                        }}>
+                            <button
+                                onClick={previousPeriod}
+                                style={{
+                                    padding: '4px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary)',
+                                    borderRadius: 'var(--radius-sm)'
+                                }}
+                                title="Période précédente"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            <span style={{
+                                fontSize: '11px',
+                                color: 'var(--color-text-secondary)',
+                                fontWeight: 500
+                            }}>
+                                {new Date(startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                                {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}`}
+                            </span>
+                            <button
+                                onClick={nextPeriod}
+                                style={{
+                                    padding: '4px',
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'var(--color-text-secondary)',
+                                    borderRadius: 'var(--radius-sm)'
+                                }}
+                                title="Période suivante"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
+
+                        {/* Date inputs */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                            <div>
+                                <label style={{ 
+                                    fontSize: '10px', 
+                                    color: 'var(--color-text-muted)',
+                                    display: 'block',
+                                    marginBottom: '2px'
+                                }}>
+                                    Début
+                                </label>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => {
+                                        setStartDate(e.target.value);
+                                        if (e.target.value > endDate) {
+                                            setEndDate(e.target.value);
+                                        }
+                                    }}
+                                    style={{
+                                        width: '100%',
+                                        padding: '6px 8px',
+                                        fontSize: '12px',
+                                        border: '1px solid var(--color-border)',
+                                        borderRadius: 'var(--radius-md)',
+                                        background: 'var(--color-bg)'
+                                    }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ 
+                                    fontSize: '10px', 
+                                    color: 'var(--color-text-muted)',
+                                    display: 'block',
+                                    marginBottom: '2px'
+                                }}>
+                                    Fin
+                                </label>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    min={startDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '6px 8px',
+                                        fontSize: '12px',
+                                        border: '1px solid var(--color-border)',
+                                        borderRadius: 'var(--radius-md)',
+                                        background: 'var(--color-bg)'
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Collapsed: show just calendar icon */}
+                {collapsed && (
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'center',
+                        padding: 'var(--space-2)',
+                        marginBottom: 'var(--space-2)'
+                    }}>
+                        <div 
+                            style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 'var(--radius-md)',
+                                background: 'var(--color-primary-100)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'var(--color-primary-600)'
+                            }}
+                            title={`${startDate} - ${endDate}`}
+                        >
+                            <Calendar size={16} />
+                        </div>
+                    </div>
+                )}
 
                 <nav className="sidebar-nav">
                     {navSections.map((section, idx) => (

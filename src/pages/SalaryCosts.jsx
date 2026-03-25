@@ -24,17 +24,17 @@ import {
 } from 'lucide-react';
 import { Modal, DataTable } from '../components/UI';
 import { salaryCostsAPI, hairdressersAPI, salaryPaymentsAPI, equipmentPurchasesAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const SalaryCosts = () => {
+    const { startDate, endDate, getYearMonth } = useDateFilter();
+    const { year: selectedYear, month: selectedMonth } = getYearMonth();
+    
     // Data states
     const [salaryCosts, setSalaryCosts] = useState([]);
     const [hairdressers, setHairdressers] = useState([]);
     const [availableMonths, setAvailableMonths] = useState([]);
     const [summary, setSummary] = useState(null);
-
-    // Filter states
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
     // UI states
     const [loading, setLoading] = useState(true);
@@ -751,32 +751,26 @@ const SalaryCosts = () => {
                     flexWrap: 'wrap',
                     gap: 'var(--space-4)'
                 }}>
+                    {/* Period display */}
                     <div>
-                        <label className="form-label">Mois</label>
-                        <select
-                            className="form-select"
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                            style={{ minWidth: '150px' }}
-                        >
-                            {monthNames.map((name, idx) => (
-                                <option key={idx} value={idx + 1}>{name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="form-label">Année</label>
-                        <select
-                            className="form-select"
-                            value={selectedYear}
-                            onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                            style={{ minWidth: '100px' }}
-                        >
-                            {yearOptions.map(y => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
-                        </select>
+                        <label className="form-label">Période</label>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)',
+                            padding: 'var(--space-2) var(--space-3)',
+                            background: 'var(--color-primary-50)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--color-primary-700)',
+                            fontWeight: 500,
+                            fontSize: 'var(--font-size-sm)'
+                        }}>
+                            <Calendar size={16} />
+                            <span>
+                                {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                            </span>
+                        </div>
                     </div>
 
                     <button 

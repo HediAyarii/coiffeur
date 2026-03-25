@@ -14,15 +14,16 @@ import {
     hairdressersAPI,
     salonsAPI
 } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Transactions = () => {
+    const { startDate, endDate } = useDateFilter();
     const [transactions, setTransactions] = useState([]);
     const [services, setServices] = useState([]);
     const [hairdressers, setHairdressers] = useState([]);
     const [salons, setSalons] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [selectedSalon, setSelectedSalon] = useState('');
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [formData, setFormData] = useState({
@@ -40,7 +41,7 @@ const Transactions = () => {
 
     useEffect(() => {
         filterTransactions();
-    }, [selectedSalon, selectedDate]);
+    }, [selectedSalon, startDate, endDate]);
 
     const loadData = async () => {
         try {
@@ -65,12 +66,12 @@ const Transactions = () => {
 
     const filterTransactions = async () => {
         try {
-            const filters = {};
+            const filters = {
+                start_date: startDate,
+                end_date: endDate
+            };
             if (selectedSalon) {
                 filters.salon_id = selectedSalon;
-            }
-            if (selectedDate) {
-                filters.date = selectedDate;
             }
             let txs = await transactionsAPI.getAll(filters);
             txs.sort((a, b) => new Date(b.service_date_time) - new Date(a.service_date_time));
@@ -337,13 +338,24 @@ const Transactions = () => {
                     flexWrap: 'wrap'
                 }}>
                     <div className="form-group" style={{ marginBottom: 0, minWidth: '200px' }}>
-                        <label className="form-label">Date</label>
-                        <input
-                            type="date"
-                            className="form-input"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                        />
+                        <label className="form-label">Période</label>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)',
+                            padding: 'var(--space-2) var(--space-3)',
+                            background: 'var(--color-primary-50)',
+                            borderRadius: 'var(--radius-md)',
+                            color: 'var(--color-primary-700)',
+                            fontWeight: 500,
+                            fontSize: 'var(--font-size-sm)'
+                        }}>
+                            <Calendar size={16} />
+                            <span>
+                                {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                            </span>
+                        </div>
                     </div>
 
                     <div className="form-group" style={{ marginBottom: 0, minWidth: '200px' }}>

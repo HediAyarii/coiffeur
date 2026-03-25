@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DateFilterProvider } from './context/DateFilterContext';
 import { Layout } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -171,7 +172,9 @@ function App() {
     return (
         <BrowserRouter>
             <AuthProvider>
-                <AppRoutes />
+                <DateFilterProvider>
+                    <AppRoutes />
+                </DateFilterProvider>
             </AuthProvider>
         </BrowserRouter>
     );

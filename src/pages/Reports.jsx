@@ -50,19 +50,12 @@ import {
     fixedExpensesAPI,
     salaryCostsAPI 
 } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Reports = () => {
+    const { startDate, endDate } = useDateFilter();
     const [period, setPeriod] = useState('month');
     const [selectedSalon, setSelectedSalon] = useState('');
-    const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    });
     const [compareMode, setCompareMode] = useState(false);
     const [activeTab, setActiveTab] = useState('overview');
     
@@ -315,23 +308,23 @@ const Reports = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
-                    {/* Date Range Selectors */}
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="form-input"
-                            style={{ width: '150px' }}
-                        />
-                        <span style={{ color: 'var(--color-text-muted)' }}>à</span>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="form-input"
-                            style={{ width: '150px' }}
-                        />
+                    {/* Period display */}
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)',
+                        padding: 'var(--space-2) var(--space-3)',
+                        background: 'var(--color-primary-50)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--color-primary-700)',
+                        fontWeight: 500,
+                        fontSize: 'var(--font-size-sm)'
+                    }}>
+                        <Calendar size={16} />
+                        <span>
+                            {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                        </span>
                     </div>
 
                     {/* Salon Filter */}
@@ -346,28 +339,6 @@ const Reports = () => {
                             <option key={salon.id} value={salon.id}>{salon.name}</option>
                         ))}
                     </select>
-
-                    {/* Period Tabs */}
-                    <div className="tabs">
-                        <button
-                            className={`tab ${period === 'week' ? 'active' : ''}`}
-                            onClick={() => setPeriod('week')}
-                        >
-                            Semaine
-                        </button>
-                        <button
-                            className={`tab ${period === 'month' ? 'active' : ''}`}
-                            onClick={() => setPeriod('month')}
-                        >
-                            Mois
-                        </button>
-                        <button
-                            className={`tab ${period === 'year' ? 'active' : ''}`}
-                            onClick={() => setPeriod('year')}
-                        >
-                            Année
-                        </button>
-                    </div>
 
                     {/* Export Button */}
                     <button className="btn btn-secondary" onClick={exportToCSV}>

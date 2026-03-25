@@ -33,6 +33,7 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { useAuth } from '../context/AuthContext';
+import { useDateFilter } from '../context/DateFilterContext';
 import {
     transactionsAPI,
     assignmentsAPI,
@@ -43,10 +44,9 @@ import {
 
 const MonEspace = () => {
     const { user, logout } = useAuth();
-    const [filterMonth, setFilterMonth] = useState(() => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    });
+    const { startDate, endDate, getMonth, previousPeriod, nextPeriod } = useDateFilter();
+    const filterMonth = getMonth(); // YYYY-MM from startDate
+    
     const [stats, setStats] = useState({
         todayEarnings: 0,
         weekEarnings: 0,
@@ -111,13 +111,6 @@ const MonEspace = () => {
             loadData();
         }
     }, [user, filterMonth]);
-
-    const changeMonth = (delta) => {
-        const [year, month] = filterMonth.split('-').map(Number);
-        const newDate = new Date(year, month - 1 + delta, 1);
-        setFilterMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, '0')}`);
-        setShowAllTransactions(false);
-    };
 
     const formatMonthLabel = (monthStr) => {
         const [year, month] = monthStr.split('-');
@@ -638,14 +631,18 @@ const MonEspace = () => {
             <div className="mobile-month-nav">
                 <button 
                     className="month-nav-btn"
-                    onClick={() => changeMonth(-1)}
+                    onClick={previousPeriod}
                 >
                     <ChevronLeft size={20} />
                 </button>
-                <span className="month-nav-label">{formatMonthLabel(filterMonth)}</span>
+                <span className="month-nav-label">
+                    {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    {startDate === endDate && ` ${new Date(startDate).getFullYear()}`}
+                </span>
                 <button 
                     className="month-nav-btn"
-                    onClick={() => changeMonth(1)}
+                    onClick={nextPeriod}
                     disabled={isCurrentMonth()}
                     style={{ opacity: isCurrentMonth() ? 0.3 : 1 }}
                 >

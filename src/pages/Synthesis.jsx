@@ -1,21 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, CreditCard, Wallet, Receipt, RefreshCw, Calculator, PiggyBank, Banknote } from 'lucide-react';
+import { TrendingUp, CreditCard, Wallet, Receipt, RefreshCw, Calculator, PiggyBank, Banknote, Calendar } from 'lucide-react';
 import { synthesisAPI, salonsAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Synthesis = () => {
+    const { startDate, endDate } = useDateFilter();
     const [synthesisData, setSynthesisData] = useState([]);
     const [salons, setSalons] = useState([]);
     const [declaredCash, setDeclaredCash] = useState({});
     const [beneficeData, setBeneficeData] = useState(null);
-    const [startDate, setStartDate] = useState(() => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-    });
-    const [endDate, setEndDate] = useState(() => {
-        const now = new Date();
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [editingCash, setEditingCash] = useState({});
@@ -145,28 +138,22 @@ const Synthesis = () => {
                     <p className="page-subtitle">Vue d'ensemble du CA et de la TVA par salon</p>
                 </div>
                 <div className="page-header-actions">
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">Date début</label>
-                            <input
-                                type="date"
-                                className="form-input"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                style={{ width: '150px' }}
-                            />
-                        </div>
-                        <span style={{ color: 'var(--color-text-muted)', marginTop: '24px' }}>à</span>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label className="form-label">Date fin</label>
-                            <input
-                                type="date"
-                                className="form-input"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                style={{ width: '150px' }}
-                            />
-                        </div>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-2)',
+                        padding: 'var(--space-2) var(--space-3)',
+                        background: 'var(--color-primary-50)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--color-primary-700)',
+                        fontWeight: 500,
+                        fontSize: 'var(--font-size-sm)'
+                    }}>
+                        <Calendar size={16} />
+                        <span>
+                            {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                        </span>
                     </div>
                     <button className="btn btn-secondary" onClick={loadSynthesis}>
                         <RefreshCw size={18} />

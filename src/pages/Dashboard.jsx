@@ -9,7 +9,8 @@ import {
     Clock,
     CreditCard,
     Banknote,
-    AlertCircle
+    AlertCircle,
+    Calendar
 } from 'lucide-react';
 import {
     AreaChart,
@@ -27,8 +28,11 @@ import {
 } from 'recharts';
 import { StatCard } from '../components/UI';
 import { analyticsAPI, salonsAPI, hairdressersAPI } from '../services/api';
+import { useDateFilter } from '../context/DateFilterContext';
 
 const Dashboard = () => {
+    const { startDate, endDate } = useDateFilter();
+    
     const [stats, setStats] = useState({
         todayRevenue: 0,
         weekRevenue: 0,
@@ -48,12 +52,14 @@ const Dashboard = () => {
 
     useEffect(() => {
         loadDashboardData();
-    }, []);
+    }, [startDate, endDate]);
 
     const loadDashboardData = async () => {
         try {
             setLoading(true);
             setError(null);
+
+            const filters = { start_date: startDate, end_date: endDate };
 
             // Load all data in parallel
             const [
@@ -66,7 +72,7 @@ const Dashboard = () => {
                 salons,
                 hairdressers
             ] = await Promise.all([
-                analyticsAPI.getDashboardStats(),
+                analyticsAPI.getDashboard(filters),
                 analyticsAPI.getDailyRevenue(7),
                 analyticsAPI.getServiceBreakdown(),
                 analyticsAPI.getTopHairdressers(5),
@@ -163,6 +169,40 @@ const Dashboard = () => {
                 </div>
             ) : (
                 <>
+            {/* Header with period */}
+            <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: 'var(--space-6)'
+            }}>
+                <div>
+                    <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, marginBottom: 'var(--space-2)' }}>
+                        Tableau de bord
+                    </h1>
+                    <p style={{ color: 'var(--color-text-muted)' }}>
+                        Vue d'ensemble de votre activité
+                    </p>
+                </div>
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-2) var(--space-3)',
+                    background: 'var(--color-primary-50)',
+                    borderRadius: 'var(--radius-md)',
+                    color: 'var(--color-primary-700)',
+                    fontWeight: 500,
+                    fontSize: 'var(--font-size-sm)'
+                }}>
+                    <Calendar size={16} />
+                    <span>
+                        {new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {startDate !== endDate && ` - ${new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                    </span>
+                </div>
+            </div>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-4" style={{ marginBottom: 'var(--space-8)' }}>
                 <StatCard
