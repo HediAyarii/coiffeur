@@ -301,43 +301,25 @@ router.get('/benefice', async (req, res) => {
         const netCoif011 = parseFloat(virementResult.rows[0].net_coif011) || 0;
         const totalVirement = totalNetSalary - netCoif011;
         
-        // 4a. Get total salary payments by cheque (based on payment_date)
-        let chequeResult;
-        if (useDateRange) {
-            chequeResult = await pool.query(`
-                SELECT COALESCE(SUM(sp.amount), 0) as total_cheque
-                FROM salary_payments sp
-                WHERE DATE(sp.payment_date) >= $1 AND DATE(sp.payment_date) <= $2
-                  AND sp.payment_method = 'cheque'
-            `, [start_date, end_date]);
-        } else {
-            chequeResult = await pool.query(`
-                SELECT COALESCE(SUM(sp.amount), 0) as total_cheque
-                FROM salary_payments sp
-                WHERE TO_CHAR(sp.payment_date, 'YYYY-MM') = $1
-                  AND sp.payment_method = 'cheque'
-            `, [filterMonth]);
-        }
+        // 4a. Get total salary payments by cheque (based on work month via salary_costs)
+        const chequeResult = await pool.query(`
+            SELECT COALESCE(SUM(sp.amount), 0) as total_cheque
+            FROM salary_payments sp
+            JOIN salary_costs sc ON sp.salary_cost_id = sc.id
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+              AND sp.payment_method = 'cheque'
+        `, [startYM, endYM]);
         
         const totalCheque = parseFloat(chequeResult.rows[0].total_cheque) || 0;
         
-        // 4b. Get total salary payments by especes (based on payment_date)
-        let especesPaymentResult;
-        if (useDateRange) {
-            especesPaymentResult = await pool.query(`
-                SELECT COALESCE(SUM(sp.amount), 0) as total_especes
-                FROM salary_payments sp
-                WHERE DATE(sp.payment_date) >= $1 AND DATE(sp.payment_date) <= $2
-                  AND sp.payment_method = 'especes'
-            `, [start_date, end_date]);
-        } else {
-            especesPaymentResult = await pool.query(`
-                SELECT COALESCE(SUM(sp.amount), 0) as total_especes
-                FROM salary_payments sp
-                WHERE TO_CHAR(sp.payment_date, 'YYYY-MM') = $1
-                  AND sp.payment_method = 'especes'
-            `, [filterMonth]);
-        }
+        // 4b. Get total salary payments by especes (based on work month via salary_costs)
+        const especesPaymentResult = await pool.query(`
+            SELECT COALESCE(SUM(sp.amount), 0) as total_especes
+            FROM salary_payments sp
+            JOIN salary_costs sc ON sp.salary_cost_id = sc.id
+            WHERE (sc.year * 100 + sc.month) >= $1 AND (sc.year * 100 + sc.month) <= $2
+              AND sp.payment_method = 'especes'
+        `, [startYM, endYM]);
         
         const totalSalairesEspeces = parseFloat(especesPaymentResult.rows[0].total_especes) || 0;
         
