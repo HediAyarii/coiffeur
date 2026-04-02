@@ -467,6 +467,7 @@ router.get('/benefice', async (req, res) => {
                 sc.charges,
                 sc.month as sc_month,
                 sc.year as sc_year,
+                h.matricule,
                 COALESCE(h.tax_percentage, 0) as tax_percentage,
                 COALESCE(rev.total_revenue, 0) as generated_revenue,
                 COALESCE(paid.total_paid, 0) as total_paid,
@@ -505,15 +506,18 @@ router.get('/benefice', async (req, res) => {
             const generatedRevenue = parseFloat(row.generated_revenue) || 0;
             const totalPaid = parseFloat(row.total_paid) || 0;
             const totalEquip = parseFloat(row.total_equip) || 0;
-            
+
+            // Exclure CHIKHA MOHAMED (COIF-011) des salaires négatifs
+            if (row.matricule === 'COIF-011') continue;
+
             let chargeTechnicien = 0;
             if (taxPercent === 0) chargeTechnicien = charges;
             else if (taxPercent === 50) chargeTechnicien = charges / 2;
             else if (taxPercent === 100) chargeTechnicien = 0;
             else chargeTechnicien = charges * (1 - taxPercent / 100);
-            
+
             const resteAPayer = generatedRevenue - chargeTechnicien - netSalary - totalPaid - totalEquip;
-            
+
             if (resteAPayer < 0) {
                 totalSalaireNegatif += Math.abs(resteAPayer);
             }

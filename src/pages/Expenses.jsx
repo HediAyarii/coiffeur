@@ -136,10 +136,24 @@ const Expenses = () => {
             setVariableExpenses(vars);
 
             // Load fixed expenses for the selected month
+            // 1. Charges fixes de la table expenses
+            let fixedFromExpenses = await expensesAPI.getAll();
+            if (filterSalon) {
+                fixedFromExpenses = fixedFromExpenses.filter(e => e.salon_id === filterSalon);
+            }
+            if (filterMonth) {
+                fixedFromExpenses = fixedFromExpenses.filter(e => e.date && getMonthFromDate(e.date) === filterMonth);
+            }
+            fixedFromExpenses = fixedFromExpenses.filter(e => e.type === 'fixed');
+            fixedFromExpenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // 2. Charges fixes de la table dédiée
             const fixedParams = { month: filterMonth };
             if (filterSalon) fixedParams.salon_id = filterSalon;
             const fixed = await fixedExpensesAPI.getAll(fixedParams);
-            setFixedExpenses(fixed);
+
+            // 3. Fusionne les deux sources
+            setFixedExpenses([...fixed, ...fixedFromExpenses]);
 
             // Load VAT summary
             const vatData = await expensesAPI.getVatSummary(filterMonth);
