@@ -148,6 +148,24 @@ router.post('/import', async (req, res) => {
                     `, [fullNameFromCSV]);
                 }
 
+                // If still not found, handle case where CSV first_name contains CSV last_name
+                // e.g. CSV: last_name=GHALI, first_name=HADJ GHALI → DB: first_name=HADJ, last_name=GHALI
+                if (hairdresserResult.rows.length === 0) {
+                    const csvLast = row.last_name.trim().toLowerCase();
+                    const csvFirst = row.first_name.trim().toLowerCase();
+                    if (csvFirst.includes(csvLast)) {
+                        const uniquePart = csvFirst.replace(new RegExp(csvLast, 'i'), '').trim();
+                        if (uniquePart) {
+                            hairdresserResult = await client.query(`
+                                SELECT id FROM hairdressers 
+                                WHERE (LOWER(first_name) = LOWER($1) AND LOWER(last_name) = LOWER($2))
+                                   OR (LOWER(first_name) = LOWER($2) AND LOWER(last_name) = LOWER($1))
+                                LIMIT 1
+                            `, [uniquePart, csvLast]);
+                        }
+                    }
+                }
+
                 const hairdresserId = hairdresserResult.rows.length > 0 
                     ? hairdresserResult.rows[0].id 
                     : null;
