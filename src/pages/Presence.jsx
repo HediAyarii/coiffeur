@@ -45,6 +45,12 @@ const Presence = () => {
     const [error, setError] = useState(null);
     const [showServiceModal, setShowServiceModal] = useState(false);
     const [expandedHairdresser, setExpandedHairdresser] = useState(null);
+
+    // M-1 modal states
+    const [showM1Modal, setShowM1Modal] = useState(false);
+    const [m1Hairdresser, setM1Hairdresser] = useState(null);
+    const [m1Data, setM1Data] = useState([]);
+    const [m1Loading, setM1Loading] = useState(false);
     
     // Form state
     const [serviceForm, setServiceForm] = useState({
@@ -144,6 +150,53 @@ const Presence = () => {
             totalEspecesSalon,
             salonsWorked
         };
+    };
+
+    // Open M-1 modal for a hairdresser
+    const openM1Modal = async (hairdresser) => {
+        setM1Hairdresser(hairdresser);
+        setShowM1Modal(true);
+        setM1Loading(true);
+        try {
+            const now = new Date();
+            const m1Start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const m1End = new Date(now.getFullYear(), now.getMonth(), 0);
+            const filters = {
+                start_date: m1Start.toISOString().split('T')[0],
+                end_date: m1End.toISOString().split('T')[0]
+            };
+            const data = await transactionsAPI.getByHairdresser(hairdresser.id, filters);
+            setM1Data(data);
+        } catch (err) {
+            console.error('Error loading M-1 data:', err);
+            setM1Data([]);
+        } finally {
+            setM1Loading(false);
+        }
+    };
+
+    // Build M-1 daily breakdown grouped by salon then date
+    const getM1DailyBreakdown = () => {
+        const grouped = {};
+        m1Data.forEach(s => {
+            const date = new Date(s.service_date_time).toISOString().split('T')[0];
+            const salonName = getSalonName(s.salon_id);
+            const key = `${salonName}||${date}`;
+            if (!grouped[key]) {
+                grouped[key] = { salonName, date, caEspeces: 0, caCB: 0, caGlobal: 0 };
+            }
+            const price = parseFloat(s.price_salon || 0);
+            grouped[key].caGlobal += price;
+            if (s.payment_method === 'cash') {
+                grouped[key].caEspeces += price;
+            } else {
+                grouped[key].caCB += price;
+            }
+        });
+        return Object.values(grouped).sort((a, b) => {
+            if (a.salonName !== b.salonName) return a.salonName.localeCompare(b.salonName);
+            return a.date.localeCompare(b.date);
+        });
     };
 
     // Open modal to add a service
@@ -473,7 +526,11 @@ const Presence = () => {
 
                                         {/* Info */}
                                         <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 600, fontSize: 'var(--font-size-lg)' }}>
+                                            <div 
+                                                style={{ fontWeight: 600, fontSize: 'var(--font-size-lg)', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 4 }}
+                                                onClick={(e) => { e.stopPropagation(); openM1Modal(h); }}
+                                                title="Voir le récap du mois précédent"
+                                            >
                                                 {h.first_name} {h.last_name}
                                             </div>
                                             <div style={{ 
@@ -665,7 +722,13 @@ const Presence = () => {
 
                             {/* Info */}
                             <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 500 }}>{h.first_name} {h.last_name}</div>
+                                <div 
+                                    style={{ fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 4 }}
+                                    onClick={() => openM1Modal(h)}
+                                    title="Voir le récap du mois précédent"
+                                >
+                                    {h.first_name} {h.last_name}
+                                </div>
                                 <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                                     Aucun service
                                 </div>
@@ -859,6 +922,113 @@ const Presence = () => {
                         </button>
                     </div>
                 </div>
+            </Modal>
+
+            {/* M-1 Monthly Detail Modal */}
+            <Modal
+                isOpen={showM1Modal}
+                onClose={() => setShowM1Modal(false)}
+                title={`Récap M-1 — ${m1Hairdresser?.first_name} ${m1Hairdresser?.last_name}`}
+                size="lg"
+            >
+                {m1Loading ? (
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
+                        <div className="spinner" />
+                    </div>
+                ) : m1Data.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
+                        Aucun service pour le mois précédent.
+                    </div>
+                ) : (() => {
+                    const breakdown = getM1DailyBreakdown();
+                    const totals = breakdown.reduce((acc, row) => ({
+                        caEspeces: acc.caEspeces + row.caEspeces,
+                        caCB: acc.caCB + row.caCB,
+                        caGlobal: acc.caGlobal + row.caGlobal
+                    }), { caEspeces: 0, caCB: 0, caGlobal: 0 });
+                    const m1MonthLabel = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)
+                        .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                    return (
+                        <div>
+                            <div style={{ 
+                                marginBottom: 'var(--space-4)', 
+                                padding: 'var(--space-3)', 
+                                background: 'var(--color-bg-secondary)', 
+                                borderRadius: 'var(--radius-lg)',
+                                textAlign: 'center',
+                                textTransform: 'capitalize'
+                            }}>
+                                <strong>{m1MonthLabel}</strong> — {m1Data.length} service{m1Data.length > 1 ? 's' : ''}
+                            </div>
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ 
+                                            fontSize: 'var(--font-size-xs)', 
+                                            color: 'var(--color-text-muted)',
+                                            textAlign: 'left',
+                                            borderBottom: '2px solid var(--color-border)'
+                                        }}>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Salon</th>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Date</th>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)' }}>Coiffeur</th>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>CA Espèces</th>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>CA CB</th>
+                                            <th style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right' }}>CA Global</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {breakdown.map((row, idx) => (
+                                            <tr key={idx} style={{ 
+                                                borderTop: '1px solid var(--color-border)',
+                                                fontSize: 'var(--font-size-sm)'
+                                            }}>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                                    <span className="badge" style={{ background: 'var(--color-bg-tertiary)' }}>
+                                                        {row.salonName}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)', fontWeight: 500 }}>
+                                                    {new Date(row.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                                                    {m1Hairdresser?.first_name} {m1Hairdresser?.last_name}
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>
+                                                    {row.caEspeces.toFixed(2)} €
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', color: 'var(--color-accent-400)', fontWeight: 600 }}>
+                                                    {row.caCB.toFixed(2)} €
+                                                </td>
+                                                <td style={{ padding: 'var(--space-2) var(--space-3)', textAlign: 'right', fontWeight: 700 }}>
+                                                    {row.caGlobal.toFixed(2)} €
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{ 
+                                            borderTop: '2px solid var(--color-border)',
+                                            fontWeight: 700,
+                                            fontSize: 'var(--font-size-sm)'
+                                        }}>
+                                            <td colSpan={3} style={{ padding: 'var(--space-3)', textAlign: 'right' }}>TOTAL</td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'right', color: 'var(--color-success)' }}>
+                                                {totals.caEspeces.toFixed(2)} €
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'right', color: 'var(--color-accent-400)' }}>
+                                                {totals.caCB.toFixed(2)} €
+                                            </td>
+                                            <td style={{ padding: 'var(--space-3)', textAlign: 'right' }}>
+                                                {totals.caGlobal.toFixed(2)} €
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    );
+                })()}
             </Modal>
         </div>
     );
