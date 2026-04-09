@@ -526,12 +526,18 @@ const Presence = () => {
 
                                         {/* Info */}
                                         <div style={{ flex: 1 }}>
-                                            <div 
-                                                style={{ fontWeight: 600, fontSize: 'var(--font-size-lg)', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 4 }}
-                                                onClick={(e) => { e.stopPropagation(); openM1Modal(h); }}
-                                                title="Voir le récap du mois précédent"
-                                            >
-                                                {h.first_name} {h.last_name}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                                <span style={{ fontWeight: 600, fontSize: 'var(--font-size-lg)' }}>
+                                                    {h.first_name} {h.last_name}
+                                                </span>
+                                                <button
+                                                    className="btn btn-ghost btn-sm"
+                                                    onClick={(e) => { e.stopPropagation(); openM1Modal(h); }}
+                                                    style={{ color: 'var(--color-primary-500)', fontSize: 'var(--font-size-xs)', padding: '2px 8px', border: '1px solid var(--color-primary-200)', borderRadius: 'var(--radius-md)' }}
+                                                    title="Voir le récap du mois précédent"
+                                                >
+                                                    <Calendar size={12} /> M-1
+                                                </button>
                                             </div>
                                             <div style={{ 
                                                 fontSize: 'var(--font-size-sm)', 
@@ -627,7 +633,7 @@ const Presence = () => {
                                                             fontSize: 'var(--font-size-sm)'
                                                         }}>
                                                             <td style={{ padding: 'var(--space-2)' }}>
-                                                                {new Date(s.service_date_time).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {formatTime(s.service_date_time)}
+                                                                {new Date(s.service_date_time).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                                             </td>
                                                             <td style={{ padding: 'var(--space-2)' }}>
                                                                 <span className="badge" style={{ background: 'var(--color-bg-tertiary)' }}>
@@ -722,12 +728,16 @@ const Presence = () => {
 
                             {/* Info */}
                             <div style={{ flex: 1 }}>
-                                <div 
-                                    style={{ fontWeight: 500, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 4 }}
-                                    onClick={() => openM1Modal(h)}
-                                    title="Voir le récap du mois précédent"
-                                >
-                                    {h.first_name} {h.last_name}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                                    <span style={{ fontWeight: 500 }}>{h.first_name} {h.last_name}</span>
+                                    <button
+                                        className="btn btn-ghost btn-sm"
+                                        onClick={() => openM1Modal(h)}
+                                        style={{ color: 'var(--color-primary-500)', fontSize: 'var(--font-size-xs)', padding: '2px 8px', border: '1px solid var(--color-primary-200)', borderRadius: 'var(--radius-md)' }}
+                                        title="Voir le récap du mois précédent"
+                                    >
+                                        <Calendar size={12} /> M-1
+                                    </button>
                                 </div>
                                 <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
                                     Aucun service
