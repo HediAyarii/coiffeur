@@ -133,11 +133,15 @@ const Presence = () => {
         const services = getHairdresserServices(hairdresserId);
         const totalSalon = services.reduce((sum, s) => sum + parseFloat(s.price_salon || 0), 0);
         const totalCoiffeur = services.reduce((sum, s) => sum + parseFloat(s.price_coiffeur || 0), 0);
+        const totalCBSalon = services.filter(s => s.payment_method === 'card').reduce((sum, s) => sum + parseFloat(s.price_salon || 0), 0);
+        const totalEspecesSalon = services.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + parseFloat(s.price_salon || 0), 0);
         const salonsWorked = [...new Set(services.map(s => s.salon_id))];
         return {
             count: services.length,
             totalSalon,
             totalCoiffeur,
+            totalCBSalon,
+            totalEspecesSalon,
             salonsWorked
         };
     };
@@ -478,12 +482,19 @@ const Presence = () => {
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: 'var(--space-3)',
-                                                marginTop: 'var(--space-1)'
+                                                marginTop: 'var(--space-1)',
+                                                flexWrap: 'wrap'
                                             }}>
                                                 <span className="badge badge-success">{stats.count} services</span>
                                                 {stats.salonsWorked.length > 1 && (
                                                     <span className="badge badge-purple">{stats.salonsWorked.length} salons</span>
                                                 )}
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-accent-400)', fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                                                    <CreditCard size={14} /> CB: {stats.totalCBSalon.toFixed(2)} €
+                                                </span>
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--color-success)', fontWeight: 600, fontSize: 'var(--font-size-sm)' }}>
+                                                    <Banknote size={14} /> Espèces: {stats.totalEspecesSalon.toFixed(2)} €
+                                                </span>
                                             </div>
                                         </div>
 
@@ -543,7 +554,7 @@ const Presence = () => {
                                                         color: 'var(--color-text-muted)',
                                                         textAlign: 'left'
                                                     }}>
-                                                        <th style={{ padding: 'var(--space-2)' }}>Heure</th>
+                                                        <th style={{ padding: 'var(--space-2)' }}>Date du service</th>
                                                         <th style={{ padding: 'var(--space-2)' }}>Salon</th>
                                                         <th style={{ padding: 'var(--space-2)' }}>Service</th>
                                                         <th style={{ padding: 'var(--space-2)' }}>Paiement</th>
@@ -553,13 +564,13 @@ const Presence = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {services.map(s => (
+                                                    {getHairdresserServices(h.id).map(s => (
                                                         <tr key={s.id} style={{ 
                                                             borderTop: '1px solid var(--color-border)',
                                                             fontSize: 'var(--font-size-sm)'
                                                         }}>
                                                             <td style={{ padding: 'var(--space-2)' }}>
-                                                                {formatTime(s.service_date_time)}
+                                                                {new Date(s.service_date_time).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {formatTime(s.service_date_time)}
                                                             </td>
                                                             <td style={{ padding: 'var(--space-2)' }}>
                                                                 <span className="badge" style={{ background: 'var(--color-bg-tertiary)' }}>
