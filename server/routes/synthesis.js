@@ -439,8 +439,8 @@ router.get('/benefice', async (req, res) => {
         if (useDateRange) {
             productSalesResult = await pool.query(`
                 SELECT 
-                    COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_especes,
-                    COALESCE(SUM(CASE WHEN payment_method = 'card' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_cb
+                    COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_price ELSE 0 END), 0) as ventes_produits_especes,
+                    COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total_price ELSE 0 END), 0) as ventes_produits_cb
                 FROM product_sales
                 WHERE DATE(sale_date) >= $1 AND DATE(sale_date) <= $2
                   AND (sale_type = 'sale' OR sale_type IS NULL)
@@ -448,8 +448,8 @@ router.get('/benefice', async (req, res) => {
         } else {
             productSalesResult = await pool.query(`
                 SELECT 
-                    COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_especes,
-                    COALESCE(SUM(CASE WHEN payment_method = 'card' THEN (total_price - COALESCE(vat_amount, 0)) ELSE 0 END), 0) as ventes_produits_cb
+                    COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_price ELSE 0 END), 0) as ventes_produits_especes,
+                    COALESCE(SUM(CASE WHEN payment_method = 'card' THEN total_price ELSE 0 END), 0) as ventes_produits_cb
                 FROM product_sales
                 WHERE TO_CHAR(sale_date, 'YYYY-MM') = $1
                   AND (sale_type = 'sale' OR sale_type IS NULL)
