@@ -446,16 +446,14 @@ const Products = () => {
                         }}>
                             {qty}
                         </span>
-                        {selectedSalon && (
-                            <button
-                                className="btn btn-ghost btn-sm"
-                                onClick={(e) => { e.stopPropagation(); openStockModal(row); }}
-                                title="Modifier le stock"
-                                style={{ padding: '2px 6px', minWidth: 'auto' }}
-                            >
-                                <Pencil size={14} />
-                            </button>
-                        )}
+                        <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={(e) => { e.stopPropagation(); openStockModal(row); }}
+                            title="Modifier le stock"
+                            style={{ padding: '2px 6px', minWidth: 'auto' }}
+                        >
+                            <Pencil size={14} />
+                        </button>
                         {isLowStock(row) && (
                             <span className="badge badge-warning">Stock bas</span>
                         )}
