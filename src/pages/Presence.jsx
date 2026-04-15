@@ -152,23 +152,21 @@ const Presence = () => {
         };
     };
 
-    // Open M-1 modal for a hairdresser
+    // Open monthly recap modal for a hairdresser
     const openM1Modal = async (hairdresser) => {
         setM1Hairdresser(hairdresser);
         setShowM1Modal(true);
         setM1Loading(true);
         try {
-            const now = new Date();
-            const m1Start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            const m1End = new Date(now.getFullYear(), now.getMonth(), 0);
+            // Use the full selected period from sidebar
             const filters = {
-                start_date: m1Start.toISOString().split('T')[0],
-                end_date: m1End.toISOString().split('T')[0]
+                start_date: startDate,
+                end_date: endDate
             };
             const data = await transactionsAPI.getByHairdresser(hairdresser.id, filters);
             setM1Data(data);
         } catch (err) {
-            console.error('Error loading M-1 data:', err);
+            console.error('Error loading monthly data:', err);
             setM1Data([]);
         } finally {
             setM1Loading(false);
@@ -202,10 +200,11 @@ const Presence = () => {
     // Open modal to add a service
     const openServiceModal = (hairdresser) => {
         setSelectedHairdresser(hairdresser);
+        const lastDate = localStorage.getItem('lastServiceDate') || new Date().toISOString().split('T')[0];
         setServiceForm({
             salon_id: filterSalonId || (salons.length > 0 ? salons[0].id : ''),
             payment_method: 'cash',
-            service_date: new Date().toISOString().split('T')[0],
+            service_date: lastDate,
             selectedServices: {}
         });
         setShowServiceModal(true);
@@ -270,6 +269,7 @@ const Presence = () => {
             });
 
             await Promise.all(promises);
+            localStorage.setItem('lastServiceDate', serviceForm.service_date);
             setShowServiceModal(false);
             await loadDailyServices();
         } catch (err) {
@@ -534,9 +534,9 @@ const Presence = () => {
                                                     className="btn btn-ghost btn-sm"
                                                     onClick={(e) => { e.stopPropagation(); openM1Modal(h); }}
                                                     style={{ color: 'var(--color-primary-500)', fontSize: 'var(--font-size-xs)', padding: '2px 8px', border: '1px solid var(--color-primary-200)', borderRadius: 'var(--radius-md)' }}
-                                                    title="Voir le récap du mois précédent"
+                                                    title="Voir le récap du mois"
                                                 >
-                                                    <Calendar size={12} /> M-1
+                                                    <Calendar size={12} /> M
                                                 </button>
                                             </div>
                                             <div style={{ 
@@ -734,9 +734,9 @@ const Presence = () => {
                                         className="btn btn-ghost btn-sm"
                                         onClick={() => openM1Modal(h)}
                                         style={{ color: 'var(--color-primary-500)', fontSize: 'var(--font-size-xs)', padding: '2px 8px', border: '1px solid var(--color-primary-200)', borderRadius: 'var(--radius-md)' }}
-                                        title="Voir le récap du mois précédent"
+                                        title="Voir le récap du mois"
                                     >
-                                        <Calendar size={12} /> M-1
+                                        <Calendar size={12} /> M
                                     </button>
                                 </div>
                                 <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
@@ -934,11 +934,11 @@ const Presence = () => {
                 </div>
             </Modal>
 
-            {/* M-1 Monthly Detail Modal */}
+            {/* Monthly Detail Modal */}
             <Modal
                 isOpen={showM1Modal}
                 onClose={() => setShowM1Modal(false)}
-                title={`Récap M-1 — ${m1Hairdresser?.first_name} ${m1Hairdresser?.last_name}`}
+                title={`Récap Mensuel — ${m1Hairdresser?.first_name} ${m1Hairdresser?.last_name}`}
                 size="lg"
             >
                 {m1Loading ? (
@@ -947,7 +947,7 @@ const Presence = () => {
                     </div>
                 ) : m1Data.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--color-text-muted)' }}>
-                        Aucun service pour le mois précédent.
+                        Aucun service pour ce mois.
                     </div>
                 ) : (() => {
                     const breakdown = getM1DailyBreakdown();
@@ -956,8 +956,8 @@ const Presence = () => {
                         caCB: acc.caCB + row.caCB,
                         caGlobal: acc.caGlobal + row.caGlobal
                     }), { caEspeces: 0, caCB: 0, caGlobal: 0 });
-                    const m1MonthLabel = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)
-                        .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+                    const m1MonthLabel = new Date(startDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+                        + ' — ' + new Date(endDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
                     return (
                         <div>
                             <div style={{ 
