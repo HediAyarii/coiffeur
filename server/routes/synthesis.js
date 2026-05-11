@@ -342,8 +342,8 @@ router.get('/benefice', async (req, res) => {
         const totalTPE2 = parseFloat(tpe2Result.rows[0].total_tpe2) || 0;
         const totalFraisTPE2 = parseFloat(tpe2Result.rows[0].total_frais_tpe2) || 0;
         
-        // 2. Calculate TVA CB (20% included) on (CA CB - TPE2 - Frais TPE2)
-        const tvaCB = Math.round((totalCB - totalTPE2 - totalFraisTPE2) * 0.20 / 1.20 * 100) / 100;
+        // 2. Calculate TVA CB (20% included) on (CA CB - TPE2)
+        const tvaCB = Math.round((totalCB - totalTPE2) * 0.20 / 1.20 * 100) / 100;
         
         // 4. Get total virement = Total Net (salary_costs) - Net salary of COIF-011
         const virementResult = await pool.query(`
@@ -591,8 +591,8 @@ router.get('/benefice', async (req, res) => {
         const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
         
         // Calculate benefices
-        // CB Benefice: Total CB - TPE2 - Frais TPE2 - TVA CB - TVA Espèces - Virement - Chèque paiements - Virement paiements - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
-        const cbBenefice = totalCB - totalTPE2 - totalFraisTPE2 - tvaCB - tvaEspeces - totalVirement - totalCheque - totalVirementPayments - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
+        // CB Benefice: Total CB - Frais TPE2 only (TPE2 amount stays in compte) - TVA CB - TVA Espèces - Virement - Chèque paiements - Virement paiements - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
+        const cbBenefice = totalCB - totalFraisTPE2 - tvaCB - tvaEspeces - totalVirement - totalCheque - totalVirementPayments - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
         // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
         const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
         

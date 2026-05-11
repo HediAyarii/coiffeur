@@ -145,7 +145,7 @@ const Synthesis = () => {
             ca_cash: acc.ca_cash + parseFloat(salon.ca_cash || 0),
             ca_card: acc.ca_card + parseFloat(salon.ca_card || 0),
             ca_total: acc.ca_total + parseFloat(salon.ca_total || 0),
-            vat_on_card: acc.vat_on_card + Math.round((parseFloat(salon.ca_card || 0) - parseFloat(tpe2.tpe2_amount || 0) - parseFloat(tpe2.frais_amount || 0)) * 0.20 / 1.20 * 100) / 100,
+            vat_on_card: acc.vat_on_card + Math.round((parseFloat(salon.ca_card || 0) - parseFloat(tpe2.tpe2_amount || 0)) * 0.20 / 1.20 * 100) / 100,
             vat_recoverable: acc.vat_recoverable + parseFloat(salon.vat_recoverable || 0),
             declared_cash: acc.declared_cash + parseFloat(cash.declared_amount || 0),
             vat_on_declared: acc.vat_on_declared + parseFloat(cash.vat_amount || 0),
@@ -287,8 +287,8 @@ const Synthesis = () => {
                                 const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
                                 const fraisAmount = parseFloat(tpe2.frais_amount || 0);
                                 const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
-                                const adjustedVatOnCard = Math.round(adjustedCaCard * 0.20 / 1.20 * 100) / 100;
-                                const vatToPay = parseFloat(cash.vat_amount || 0) + adjustedVatOnCard - parseFloat(salon.vat_recoverable || 0);
+                                const vatOnCard = Math.round((parseFloat(salon.ca_card || 0) - tpe2Amount) * 0.20 / 1.20 * 100) / 100;
+                                const vatToPay = parseFloat(cash.vat_amount || 0) + vatOnCard - parseFloat(salon.vat_recoverable || 0);
                                 
                                 return (
                                     <tr key={salon.salon_id}>
@@ -344,7 +344,7 @@ const Synthesis = () => {
                                             {formatCurrency(salon.ca_total)}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
-                                            {formatCurrency(adjustedVatOnCard)}
+                                            {formatCurrency(vatOnCard)}
                                         </td>
                                         <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>
                                             {formatCurrency(salon.vat_recoverable)}
@@ -445,8 +445,8 @@ const Synthesis = () => {
                         const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
                         const fraisAmount = parseFloat(tpe2.frais_amount || 0);
                         const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
-                        const adjustedVatOnCard = Math.round(adjustedCaCard * 0.20 / 1.20 * 100) / 100;
-                        const vatToPay = parseFloat(cash.vat_amount || 0) + adjustedVatOnCard - parseFloat(salon.vat_recoverable || 0);
+                        const vatOnCard = Math.round((parseFloat(salon.ca_card || 0) - tpe2Amount) * 0.20 / 1.20 * 100) / 100;
+                        const vatToPay = parseFloat(cash.vat_amount || 0) + vatOnCard - parseFloat(salon.vat_recoverable || 0);
                         
                         return (
                             <div key={salon.salon_id} className="synthesis-mobile-card">
@@ -576,7 +576,8 @@ const Synthesis = () => {
                         <li>La TVA sur CB est calculée automatiquement (20%)</li>
                         <li><strong>Espèces Déclaré</strong> : Cliquez pour modifier</li>
                         <li><strong>TPE2</strong> : Cliquez pour modifier. Frais = 2% du montant TPE2</li>
-                        <li>CA CB affiché = CA CB brut - TPE2 - Frais TPE2</li>
+                        <li>CA CB affiché = CA CB brut - TPE2 - Frais TPE2 (affichage uniquement)</li>
+                        <li>Compte bénéfice : seuls les Frais TPE2 sont déduits (pas le montant TPE2)</li>
                         <li>TVA à payer = (TVA Déclaré + TVA CB) - TVA Récupérable</li>
                     </ul>
                 </div>
@@ -608,17 +609,11 @@ const Synthesis = () => {
                                     <span>Total CB</span>
                                     <span style={{ fontWeight: 600 }}>{formatCurrency(beneficeData.total_cb)}</span>
                                 </div>
-                                {(beneficeData.total_tpe2 > 0 || beneficeData.total_frais_tpe2 > 0) && (
-                                    <>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
-                                            <span>- TPE2</span>
-                                            <span>{formatCurrency(beneficeData.total_tpe2)}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
-                                            <span>- Frais TPE2 (2%)</span>
-                                            <span>{formatCurrency(beneficeData.total_frais_tpe2)}</span>
-                                        </div>
-                                    </>
+                                {beneficeData.total_frais_tpe2 > 0 && (
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                        <span>- Frais TPE2 (2%)</span>
+                                        <span>{formatCurrency(beneficeData.total_frais_tpe2)}</span>
+                                    </div>
                                 )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
                                     <span>- TVA CB</span>
