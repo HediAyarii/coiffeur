@@ -8,10 +8,12 @@ const Synthesis = () => {
     const [synthesisData, setSynthesisData] = useState([]);
     const [salons, setSalons] = useState([]);
     const [declaredCash, setDeclaredCash] = useState({});
+    const [declaredTPE2, setDeclaredTPE2] = useState({});
     const [beneficeData, setBeneficeData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [editingCash, setEditingCash] = useState({});
+    const [editingTPE2, setEditingTPE2] = useState({});
 
     useEffect(() => {
         loadData();
@@ -47,13 +49,25 @@ const Synthesis = () => {
             const cashPromises = data.map(salon =>
                 synthesisAPI.getDeclaredCash(salon.salon_id, declaredMonth)
             );
-            const cashData = await Promise.all(cashPromises);
+            const tpe2Promises = data.map(salon =>
+                synthesisAPI.getDeclaredTPE2(salon.salon_id, declaredMonth)
+            );
+            const [cashData, tpe2Data] = await Promise.all([
+                Promise.all(cashPromises),
+                Promise.all(tpe2Promises)
+            ]);
             
             const cashMap = {};
             cashData.forEach(cash => {
                 cashMap[cash.salon_id] = cash;
             });
             setDeclaredCash(cashMap);
+
+            const tpe2Map = {};
+            tpe2Data.forEach(tpe2 => {
+                tpe2Map[tpe2.salon_id] = tpe2;
+            });
+            setDeclaredTPE2(tpe2Map);
             
             // Load benefice data
             try {
@@ -92,6 +106,29 @@ const Synthesis = () => {
         }
     };
 
+    const handleTPE2Change = (salonId, value) => {
+        setEditingTPE2({
+            ...editingTPE2,
+            [salonId]: value
+        });
+    };
+
+    const handleSaveTPE2 = async (salonId) => {
+        try {
+            const amount = parseFloat(editingTPE2[salonId]) || 0;
+            const declaredMonth = startDate.slice(0, 7);
+            await synthesisAPI.updateDeclaredTPE2(salonId, declaredMonth, amount);
+            await loadSynthesis();
+            setEditingTPE2({
+                ...editingTPE2,
+                [salonId]: undefined
+            });
+        } catch (err) {
+            console.error('Error saving TPE2:', err);
+            setError('Erreur lors de la sauvegarde');
+        }
+    };
+
     const formatCurrency = (amount) => {
         return new Intl.NumberFormat('fr-FR', {
             style: 'currency',
@@ -101,6 +138,9 @@ const Synthesis = () => {
 
     const totals = synthesisData.reduce((acc, salon) => {
         const cash = declaredCash[salon.salon_id] || {};
+        const tpe2 = declaredTPE2[salon.salon_id] || {};
+        const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
+        const fraisAmount = parseFloat(tpe2.frais_amount || 0);
         return {
             ca_cash: acc.ca_cash + parseFloat(salon.ca_cash || 0),
             ca_card: acc.ca_card + parseFloat(salon.ca_card || 0),
@@ -108,7 +148,9 @@ const Synthesis = () => {
             vat_on_card: acc.vat_on_card + parseFloat(salon.vat_on_card || 0),
             vat_recoverable: acc.vat_recoverable + parseFloat(salon.vat_recoverable || 0),
             declared_cash: acc.declared_cash + parseFloat(cash.declared_amount || 0),
-            vat_on_declared: acc.vat_on_declared + parseFloat(cash.vat_amount || 0)
+            vat_on_declared: acc.vat_on_declared + parseFloat(cash.vat_amount || 0),
+            tpe2: acc.tpe2 + tpe2Amount,
+            frais_tpe2: acc.frais_tpe2 + fraisAmount
         };
     }, {
         ca_cash: 0,
@@ -117,7 +159,9 @@ const Synthesis = () => {
         vat_on_card: 0,
         vat_recoverable: 0,
         declared_cash: 0,
-        vat_on_declared: 0
+        vat_on_declared: 0,
+        tpe2: 0,
+        frais_tpe2: 0
     });
 
     const totalVatToPay = totals.vat_on_declared + totals.vat_on_card - totals.vat_recoverable;
@@ -224,6 +268,8 @@ const Synthesis = () => {
                                 <th style={{ textAlign: 'left' }}>Salon</th>
                                 <th style={{ textAlign: 'right' }}>CA Espèces</th>
                                 <th style={{ textAlign: 'right' }}>CA CB</th>
+                                <th style={{ textAlign: 'right' }}>TPE2</th>
+                                <th style={{ textAlign: 'right' }}>Frais TPE2</th>
                                 <th style={{ textAlign: 'right' }}>CA Général</th>
                                 <th style={{ textAlign: 'right' }}>TVA sur CB</th>
                                 <th style={{ textAlign: 'right' }}>TVA Récup.</th>
@@ -235,7 +281,12 @@ const Synthesis = () => {
                         <tbody>
                             {synthesisData.map(salon => {
                                 const cash = declaredCash[salon.salon_id] || {};
+                                const tpe2 = declaredTPE2[salon.salon_id] || {};
                                 const isEditing = editingCash[salon.salon_id] !== undefined;
+                                const isEditingTPE2 = editingTPE2[salon.salon_id] !== undefined;
+                                const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
+                                const fraisAmount = parseFloat(tpe2.frais_amount || 0);
+                                const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
                                 const vatToPay = parseFloat(cash.vat_amount || 0) + parseFloat(salon.vat_on_card || 0) - parseFloat(salon.vat_recoverable || 0);
                                 
                                 return (
@@ -245,7 +296,48 @@ const Synthesis = () => {
                                             {formatCurrency(salon.ca_cash)}
                                         </td>
                                         <td style={{ textAlign: 'right', color: 'var(--color-info)' }}>
-                                            {formatCurrency(salon.ca_card)}
+                                            {formatCurrency(adjustedCaCard)}
+                                        </td>
+                                        <td style={{ textAlign: 'right' }}>
+                                            {isEditingTPE2 ? (
+                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                                    <input
+                                                        type="number"
+                                                        className="form-input"
+                                                        value={editingTPE2[salon.salon_id]}
+                                                        onChange={(e) => handleTPE2Change(salon.salon_id, e.target.value)}
+                                                        step="0.01"
+                                                        min="0"
+                                                        style={{ width: '90px', textAlign: 'right', padding: '4px 8px' }}
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        className="btn btn-sm btn-primary"
+                                                        onClick={() => handleSaveTPE2(salon.salon_id)}
+                                                        style={{ padding: '4px 8px', minWidth: 'auto' }}
+                                                    >
+                                                        ✓
+                                                    </button>
+                                                    <button
+                                                        className="btn btn-sm btn-secondary"
+                                                        onClick={() => setEditingTPE2({ ...editingTPE2, [salon.salon_id]: undefined })}
+                                                        style={{ padding: '4px 8px', minWidth: 'auto' }}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span
+                                                    onClick={() => handleTPE2Change(salon.salon_id, tpe2.tpe2_amount || 0)}
+                                                    style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                                    title="Cliquer pour modifier"
+                                                >
+                                                    {formatCurrency(tpe2Amount)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td style={{ textAlign: 'right', fontStyle: 'italic', color: 'var(--color-text-muted)' }}>
+                                            {formatCurrency(fraisAmount)}
                                         </td>
                                         <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--color-success)' }}>
                                             {formatCurrency(salon.ca_total)}
@@ -311,7 +403,13 @@ const Synthesis = () => {
                                     {formatCurrency(totals.ca_cash)}
                                 </td>
                                 <td style={{ textAlign: 'right', color: 'var(--color-info)', fontWeight: 700 }}>
-                                    {formatCurrency(totals.ca_card)}
+                                    {formatCurrency(totals.ca_card - totals.tpe2 - totals.frais_tpe2)}
+                                </td>
+                                <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                                    {formatCurrency(totals.tpe2)}
+                                </td>
+                                <td style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 700 }}>
+                                    {formatCurrency(totals.frais_tpe2)}
                                 </td>
                                 <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 700 }}>
                                     {formatCurrency(totals.ca_total)}
@@ -340,7 +438,12 @@ const Synthesis = () => {
                 <div className="show-mobile">
                     {synthesisData.map(salon => {
                         const cash = declaredCash[salon.salon_id] || {};
+                        const tpe2 = declaredTPE2[salon.salon_id] || {};
                         const isEditing = editingCash[salon.salon_id] !== undefined;
+                        const isEditingTPE2 = editingTPE2[salon.salon_id] !== undefined;
+                        const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
+                        const fraisAmount = parseFloat(tpe2.frais_amount || 0);
+                        const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
                         const vatToPay = parseFloat(cash.vat_amount || 0) + parseFloat(salon.vat_on_card || 0) - parseFloat(salon.vat_recoverable || 0);
                         
                         return (
@@ -355,7 +458,40 @@ const Synthesis = () => {
                                 <div className="synthesis-mobile-card-row">
                                     <span className="synthesis-mobile-card-label">CA CB</span>
                                     <span className="synthesis-mobile-card-value" style={{ color: 'var(--color-info)' }}>
-                                        {formatCurrency(salon.ca_card)}
+                                        {formatCurrency(adjustedCaCard)}
+                                    </span>
+                                </div>
+                                <div className="synthesis-mobile-card-row">
+                                    <span className="synthesis-mobile-card-label">TPE2</span>
+                                    {isEditingTPE2 ? (
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <input
+                                                type="number"
+                                                className="form-input"
+                                                value={editingTPE2[salon.salon_id]}
+                                                onChange={(e) => handleTPE2Change(salon.salon_id, e.target.value)}
+                                                step="0.01"
+                                                min="0"
+                                                style={{ width: '80px', textAlign: 'right', padding: '4px 8px' }}
+                                                autoFocus
+                                            />
+                                            <button className="btn btn-sm btn-primary" onClick={() => handleSaveTPE2(salon.salon_id)} style={{ padding: '4px 8px', minWidth: 'auto' }}>✓</button>
+                                            <button className="btn btn-sm btn-secondary" onClick={() => setEditingTPE2({ ...editingTPE2, [salon.salon_id]: undefined })} style={{ padding: '4px 8px', minWidth: 'auto' }}>✕</button>
+                                        </div>
+                                    ) : (
+                                        <span
+                                            className="synthesis-mobile-card-value"
+                                            onClick={() => handleTPE2Change(salon.salon_id, tpe2.tpe2_amount || 0)}
+                                            style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                        >
+                                            {formatCurrency(tpe2Amount)}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="synthesis-mobile-card-row">
+                                    <span className="synthesis-mobile-card-label">Frais TPE2 (2%)</span>
+                                    <span className="synthesis-mobile-card-value" style={{ fontStyle: 'italic', color: 'var(--color-text-muted)' }}>
+                                        {formatCurrency(fraisAmount)}
                                     </span>
                                 </div>
                                 <div className="synthesis-mobile-card-row">
@@ -437,6 +573,8 @@ const Synthesis = () => {
                         <li>Les CA sont calculés automatiquement depuis les transactions</li>
                         <li>La TVA sur CB est calculée automatiquement (20%)</li>
                         <li><strong>Espèces Déclaré</strong> : Cliquez pour modifier</li>
+                        <li><strong>TPE2</strong> : Cliquez pour modifier. Frais = 2% du montant TPE2</li>
+                        <li>CA CB affiché = CA CB brut - TPE2 - Frais TPE2</li>
                         <li>TVA à payer = (TVA Déclaré + TVA CB) - TVA Récupérable</li>
                     </ul>
                 </div>
@@ -468,6 +606,18 @@ const Synthesis = () => {
                                     <span>Total CB</span>
                                     <span style={{ fontWeight: 600 }}>{formatCurrency(beneficeData.total_cb)}</span>
                                 </div>
+                                {(beneficeData.total_tpe2 > 0 || beneficeData.total_frais_tpe2 > 0) && (
+                                    <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                            <span>- TPE2</span>
+                                            <span>{formatCurrency(beneficeData.total_tpe2)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
+                                            <span>- Frais TPE2 (2%)</span>
+                                            <span>{formatCurrency(beneficeData.total_frais_tpe2)}</span>
+                                        </div>
+                                    </>
+                                )}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-error)' }}>
                                     <span>- TVA CB</span>
                                     <span>{formatCurrency(beneficeData.tva_cb)}</span>

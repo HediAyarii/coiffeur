@@ -469,6 +469,11 @@ export const synthesisAPI = {
         method: 'POST',
         body: JSON.stringify({ salon_id, month, declared_amount })
     }),
+    getDeclaredTPE2: (salonId, month) => fetchAPI(`/synthesis/declared-tpe2/${salonId}/${month}`),
+    updateDeclaredTPE2: (salon_id, month, tpe2_amount) => fetchAPI('/synthesis/declared-tpe2', {
+        method: 'POST',
+        body: JSON.stringify({ salon_id, month, tpe2_amount })
+    }),
     getBenefice: (startDate, endDate) => {
         const params = new URLSearchParams();
         if (startDate) params.append('start_date', startDate);

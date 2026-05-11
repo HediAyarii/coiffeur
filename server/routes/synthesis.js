@@ -183,6 +183,52 @@ router.get('/declared-cash/:salonId/:month', async (req, res) => {
     }
 });
 
+// Get or create declared TPE2 for a salon/month
+router.get('/declared-tpe2/:salonId/:month', async (req, res) => {
+    try {
+        const { salonId, month } = req.params;
+        
+        const result = await pool.query(
+            `SELECT * FROM declared_tpe2 
+             WHERE salon_id = $1 AND month = $2`,
+            [salonId, month]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.json({ salon_id: salonId, month, tpe2_amount: 0, frais_amount: 0 });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error fetching declared TPE2:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
+// Update declared TPE2 for a salon/month
+router.post('/declared-tpe2', async (req, res) => {
+    try {
+        const { salon_id, month, tpe2_amount } = req.body;
+        
+        // Calculate frais (2% of TPE2)
+        const frais_amount = Math.round(tpe2_amount * 0.02 * 100) / 100;
+        
+        const result = await pool.query(
+            `INSERT INTO declared_tpe2 (salon_id, month, tpe2_amount, frais_amount)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (salon_id, month)
+             DO UPDATE SET tpe2_amount = $3, frais_amount = $4, updated_at = CURRENT_TIMESTAMP
+             RETURNING *`,
+            [salon_id, month, tpe2_amount, frais_amount]
+        );
+        
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error updating declared TPE2:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
+});
+
 // Update declared cash for a salon/month
 router.post('/declared-cash', async (req, res) => {
     try {
@@ -286,6 +332,18 @@ router.get('/benefice', async (req, res) => {
         
         const totalDeclared = parseFloat(declaredResult.rows[0].total_declared) || 0;
         const tvaEspeces = parseFloat(declaredResult.rows[0].total_vat_declared) || 0;
+        
+        // 3b. Get TPE2 and frais
+        const tpe2Result = await pool.query(`
+            SELECT 
+                COALESCE(SUM(tpe2_amount), 0) as total_tpe2,
+                COALESCE(SUM(frais_amount), 0) as total_frais_tpe2
+            FROM declared_tpe2
+            WHERE month >= $1 AND month <= $2
+        `, [startFilterMonth, endFilterMonth]);
+        
+        const totalTPE2 = parseFloat(tpe2Result.rows[0].total_tpe2) || 0;
+        const totalFraisTPE2 = parseFloat(tpe2Result.rows[0].total_frais_tpe2) || 0;
         
         // 4. Get total virement = Total Net (salary_costs) - Net salary of COIF-011
         const virementResult = await pool.query(`
@@ -533,8 +591,8 @@ router.get('/benefice', async (req, res) => {
         const totalEquipment = parseFloat(equipmentResult.rows[0].total_equipment) || 0;
         
         // Calculate benefices
-        // CB Benefice: Total CB - TVA CB - TVA Espèces - Virement - Chèque paiements - Virement paiements - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
-        const cbBenefice = totalCB - tvaCB - tvaEspeces - totalVirement - totalCheque - totalVirementPayments - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
+        // CB Benefice: Total CB - TPE2 - Frais TPE2 - TVA CB - TVA Espèces - Virement - Chèque paiements - Virement paiements - Charges fixes - Charges variables - Charges entreprise + TVA Récupérable + Ventes Produits CB - Salaires négatifs + Espèces déclaré
+        const cbBenefice = totalCB - totalTPE2 - totalFraisTPE2 - tvaCB - tvaEspeces - totalVirement - totalCheque - totalVirementPayments - chargesFixes - chargesVariables - chargesEntreprise + tvaRecuperable + ventesProduitsCB - totalSalaireNegatif + totalDeclared;
         // Especes Benefice: Total Espèces - Espèces déclaré - Salaires espèces + Ventes Produits Espèces
         const especeBenefice = totalCash - totalDeclared - totalSalairesEspeces + ventesProduitsEspeces;
         
@@ -542,6 +600,8 @@ router.get('/benefice', async (req, res) => {
             month,
             // CB data
             total_cb: totalCB,
+            total_tpe2: totalTPE2,
+            total_frais_tpe2: totalFraisTPE2,
             tva_cb: tvaCB,
             tva_especes: tvaEspeces,
             total_virement: totalVirement,
