@@ -557,6 +557,7 @@ router.get('/benefice', async (req, res) => {
         
         // Calculate reste à payer per employee and sum negative ones
         let totalSalaireNegatif = 0;
+        let totalResteAPayer = 0;
         for (const row of resteAPayerResult.rows) {
             const charges = parseFloat(row.charges) || 0;
             const taxPercent = parseFloat(row.tax_percentage) || 0;
@@ -578,6 +579,8 @@ router.get('/benefice', async (req, res) => {
 
             if (resteAPayer < 0) {
                 totalSalaireNegatif += Math.abs(resteAPayer);
+            } else if (resteAPayer > 0.01) {
+                totalResteAPayer += resteAPayer;
             }
         }
         
@@ -621,7 +624,8 @@ router.get('/benefice', async (req, res) => {
             ventes_produits_especes: ventesProduitsEspeces,
             total_equipment: totalEquipment,
             espece_benefice: especeBenefice,
-            net_coif011: netCoif011
+            net_coif011: netCoif011,
+            total_reste_a_payer: Math.round(totalResteAPayer * 100) / 100
         });
     } catch (error) {
         console.error('Error fetching benefice:', error.message, error.stack);

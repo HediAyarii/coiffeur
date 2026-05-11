@@ -734,6 +734,7 @@ const Synthesis = () => {
                         const total = beneficeData.cb_benefice + beneficeData.espece_benefice;
                         const zubaier = total / 2;
                         const mohamed = total / 2 - (beneficeData.net_coif011 || 0);
+                        const resteAPayer = beneficeData.total_reste_a_payer || 0;
                         return (
                             <div style={{ 
                                 marginTop: 'var(--space-5)',
@@ -750,7 +751,24 @@ const Synthesis = () => {
                                     borderBottom: '2px solid var(--color-border)',
                                     marginBottom: 'var(--space-4)'
                                 }}>
-                                    <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xl)' }}>Total</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 700, fontSize: 'var(--font-size-xl)' }}>Total</span>
+                                        {resteAPayer > 0 && (
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 'var(--space-2)',
+                                                background: 'var(--color-danger-50, #fff1f2)',
+                                                border: '1px solid var(--color-danger, #ef4444)',
+                                                borderRadius: 'var(--radius-md)',
+                                                padding: '4px 12px',
+                                                fontSize: 'var(--font-size-sm)'
+                                            }}>
+                                                <span style={{ color: 'var(--color-text-secondary)' }}>Reste à payer</span>
+                                                <span style={{ fontWeight: 700, color: 'var(--color-danger, #ef4444)' }}>{formatCurrency(resteAPayer)}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <span style={{ 
                                         fontWeight: 700, 
                                         fontSize: 'var(--font-size-xl)',
