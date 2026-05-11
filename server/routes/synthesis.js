@@ -318,9 +318,6 @@ router.get('/benefice', async (req, res) => {
         const totalCash = parseFloat(caResult.rows[0].total_cash) || 0;
         const totalCB = parseFloat(caResult.rows[0].total_cb) || 0;
         
-        // 2. Calculate TVA CB (20% included in price)
-        const tvaCB = Math.round(totalCB * 0.20 / 1.20 * 100) / 100;
-        
         // 3. Get declared cash and TVA on declared
         const declaredResult = await pool.query(`
             SELECT 
@@ -344,6 +341,9 @@ router.get('/benefice', async (req, res) => {
         
         const totalTPE2 = parseFloat(tpe2Result.rows[0].total_tpe2) || 0;
         const totalFraisTPE2 = parseFloat(tpe2Result.rows[0].total_frais_tpe2) || 0;
+        
+        // 2. Calculate TVA CB (20% included) on (CA CB - TPE2 - Frais TPE2)
+        const tvaCB = Math.round((totalCB - totalTPE2 - totalFraisTPE2) * 0.20 / 1.20 * 100) / 100;
         
         // 4. Get total virement = Total Net (salary_costs) - Net salary of COIF-011
         const virementResult = await pool.query(`

@@ -145,7 +145,7 @@ const Synthesis = () => {
             ca_cash: acc.ca_cash + parseFloat(salon.ca_cash || 0),
             ca_card: acc.ca_card + parseFloat(salon.ca_card || 0),
             ca_total: acc.ca_total + parseFloat(salon.ca_total || 0),
-            vat_on_card: acc.vat_on_card + parseFloat(salon.vat_on_card || 0),
+            vat_on_card: acc.vat_on_card + Math.round((parseFloat(salon.ca_card || 0) - parseFloat(tpe2.tpe2_amount || 0) - parseFloat(tpe2.frais_amount || 0)) * 0.20 / 1.20 * 100) / 100,
             vat_recoverable: acc.vat_recoverable + parseFloat(salon.vat_recoverable || 0),
             declared_cash: acc.declared_cash + parseFloat(cash.declared_amount || 0),
             vat_on_declared: acc.vat_on_declared + parseFloat(cash.vat_amount || 0),
@@ -287,7 +287,8 @@ const Synthesis = () => {
                                 const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
                                 const fraisAmount = parseFloat(tpe2.frais_amount || 0);
                                 const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
-                                const vatToPay = parseFloat(cash.vat_amount || 0) + parseFloat(salon.vat_on_card || 0) - parseFloat(salon.vat_recoverable || 0);
+                                const adjustedVatOnCard = Math.round(adjustedCaCard * 0.20 / 1.20 * 100) / 100;
+                                const vatToPay = parseFloat(cash.vat_amount || 0) + adjustedVatOnCard - parseFloat(salon.vat_recoverable || 0);
                                 
                                 return (
                                     <tr key={salon.salon_id}>
@@ -343,7 +344,7 @@ const Synthesis = () => {
                                             {formatCurrency(salon.ca_total)}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
-                                            {formatCurrency(salon.vat_on_card)}
+                                            {formatCurrency(adjustedVatOnCard)}
                                         </td>
                                         <td style={{ textAlign: 'right', color: 'var(--color-success)' }}>
                                             {formatCurrency(salon.vat_recoverable)}
@@ -444,7 +445,8 @@ const Synthesis = () => {
                         const tpe2Amount = parseFloat(tpe2.tpe2_amount || 0);
                         const fraisAmount = parseFloat(tpe2.frais_amount || 0);
                         const adjustedCaCard = parseFloat(salon.ca_card || 0) - tpe2Amount - fraisAmount;
-                        const vatToPay = parseFloat(cash.vat_amount || 0) + parseFloat(salon.vat_on_card || 0) - parseFloat(salon.vat_recoverable || 0);
+                        const adjustedVatOnCard = Math.round(adjustedCaCard * 0.20 / 1.20 * 100) / 100;
+                        const vatToPay = parseFloat(cash.vat_amount || 0) + adjustedVatOnCard - parseFloat(salon.vat_recoverable || 0);
                         
                         return (
                             <div key={salon.salon_id} className="synthesis-mobile-card">
