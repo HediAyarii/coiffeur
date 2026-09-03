@@ -1,0 +1,49 @@
+# ===========================================
+# Dépendances
+# ===========================================
+node_modules/
+
+# ===========================================
+# Artefacts de build (régénérés par `npm run build`)
+# ===========================================
+dist/
+dist-ssr/
+.vite/
+
+# ===========================================
+# Variables d'environnement — NE JAMAIS COMMITER
+# Les .example / .production sont des modèles sans secret
+# ===========================================
+.env
+.env.*
+!.env.example
+!.env.production
+
+# ===========================================
+# Clone imbriqué accidentel
+# ===========================================
+/coiffeur/
+
+# ===========================================
+# Logs
+# ===========================================
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# ===========================================
+# Sauvegardes et dumps
+# ===========================================
+*.bak
+*.sql.gz
+coiffeur_db.*.sql
+
+# ===========================================
+# Éditeurs / OS
+# ===========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
