@@ -15,6 +15,7 @@ import {
     salonsAPI
 } from '../services/api';
 import { useDateFilter } from '../context/DateFilterContext';
+import { toLocalDateStr, buildServiceDateTime } from '../utils/dates';
 
 const Transactions = () => {
     const { startDate, endDate } = useDateFilter();
@@ -108,7 +109,8 @@ const Transactions = () => {
                 price_salon: parseFloat(formData.price_salon) || 0,
                 price_coiffeur: parseFloat(formData.price_coiffeur) || 0,
                 payment_method: formData.payment_method,
-                service_date_time: new Date().toISOString(),
+                // Date du jour en heure française (évite le passage à la veille entre minuit et 1h)
+                service_date_time: buildServiceDateTime(toLocalDateStr()),
                 // For compatibility with existing analytics
                 commission_amount: parseFloat(formData.price_coiffeur) || 0,
                 tax_amount: 0,

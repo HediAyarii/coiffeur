@@ -25,21 +25,7 @@ import {
 import { Modal } from '../components/UI';
 import { transactionsAPI, hairdressersAPI, salonsAPI, servicesAPI } from '../services/api';
 import { useDateFilter } from '../context/DateFilterContext';
-
-// Date locale (heure française) au format YYYY-MM-DD, sans passer par UTC
-const toLocalDateStr = (d) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-// Les services sont stockés en UTC et filtrés par DATE() côté serveur.
-// Entre minuit et 1h (2h en été), l'heure UTC tombe la veille de la date choisie :
-// dans ce cas on enregistre à midi pour que le service reste bien sur la date choisie.
-const buildServiceDateTime = (dateStr) => {
-    const withCurrentTime = new Date(`${dateStr}T${new Date().toTimeString().slice(0, 8)}`);
-    if (withCurrentTime.toISOString().slice(0, 10) === dateStr) {
-        return withCurrentTime.toISOString();
-    }
-    return new Date(`${dateStr}T12:00:00`).toISOString();
-};
+import { toLocalDateStr, buildServiceDateTime } from '../utils/dates';
 
 const formatDateFr = (dateStr) => {
     const [y, m, d] = dateStr.split('-');
@@ -79,7 +65,7 @@ const Presence = () => {
     const [serviceForm, setServiceForm] = useState({
         salon_id: '',
         payment_method: 'cash',
-        service_date: new Date().toISOString().split('T')[0],
+        service_date: toLocalDateStr(),
         selectedServices: {} // { service_id: quantity }
     });
 

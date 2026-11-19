@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toLocalDateStr } from '../utils/dates';
 
 const DateFilterContext = createContext(null);
 
@@ -39,9 +40,7 @@ export const DateFilterProvider = ({ children }) => {
 
     // Set to today
     const setToday = () => {
-        // Date locale : toISOString() donnerait la veille entre minuit et 1h (2h en été)
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const today = toLocalDateStr();
         setStartDate(today);
         setEndDate(today);
     };
