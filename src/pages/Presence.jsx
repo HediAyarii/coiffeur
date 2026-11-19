@@ -26,6 +26,26 @@ import { Modal } from '../components/UI';
 import { transactionsAPI, hairdressersAPI, salonsAPI, servicesAPI } from '../services/api';
 import { useDateFilter } from '../context/DateFilterContext';
 
+// Date locale (heure française) au format YYYY-MM-DD, sans passer par UTC
+const toLocalDateStr = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Les services sont stockés en UTC et filtrés par DATE() côté serveur.
+// Entre minuit et 1h (2h en été), l'heure UTC tombe la veille de la date choisie :
+// dans ce cas on enregistre à midi pour que le service reste bien sur la date choisie.
+const buildServiceDateTime = (dateStr) => {
+    const withCurrentTime = new Date(`${dateStr}T${new Date().toTimeString().slice(0, 8)}`);
+    if (withCurrentTime.toISOString().slice(0, 10) === dateStr) {
+        return withCurrentTime.toISOString();
+    }
+    return new Date(`${dateStr}T12:00:00`).toISOString();
+};
+
+const formatDateFr = (dateStr) => {
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
+};
+
 const Presence = () => {
     // Global date filter
     const { startDate, endDate } = useDateFilter();
@@ -43,7 +63,10 @@ const Presence = () => {
     const [selectedHairdresser, setSelectedHairdresser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [notice, setNotice] = useState(null);
     const [showServiceModal, setShowServiceModal] = useState(false);
+    const [modalError, setModalError] = useState(null);
+    const [saving, setSaving] = useState(false);
     const [expandedHairdresser, setExpandedHairdresser] = useState(null);
 
     // M-1 modal states
@@ -63,6 +86,13 @@ const Presence = () => {
     useEffect(() => {
         loadInitialData();
     }, []);
+
+    // Le message de succès disparaît tout seul ; l'avertissement reste jusqu'à fermeture
+    useEffect(() => {
+        if (notice?.type !== 'success') return;
+        const timer = setTimeout(() => setNotice(null), 6000);
+        return () => clearTimeout(timer);
+    }, [notice]);
 
     useEffect(() => {
         if (startDate && endDate) {
@@ -200,7 +230,8 @@ const Presence = () => {
     // Open modal to add a service
     const openServiceModal = (hairdresser) => {
         setSelectedHairdresser(hairdresser);
-        const lastDate = localStorage.getItem('lastServiceDate') || new Date().toISOString().split('T')[0];
+        const lastDate = localStorage.getItem('lastServiceDate') || toLocalDateStr(new Date());
+        setModalError(null);
         setServiceForm({
             salon_id: filterSalonId || (salons.length > 0 ? salons[0].id : ''),
             payment_method: 'cash',
@@ -243,38 +274,95 @@ const Presence = () => {
 
     // Add a service
     const handleAddService = async () => {
+        if (saving || !selectedHairdresser) return;
+        setModalError(null);
+
+        if (!serviceForm.service_date) {
+            setModalError('Veuillez choisir la date du service.');
+            return;
+        }
+        if (!serviceForm.salon_id) {
+            setModalError('Veuillez choisir un salon.');
+            return;
+        }
+
+        // Une entrée par service à créer (quantité 3 = 3 entrées)
+        const items = [];
+        Object.entries(serviceForm.selectedServices).forEach(([serviceId, quantity]) => {
+            const service = services.find(s => s.id === serviceId);
+            if (service && quantity > 0) {
+                for (let i = 0; i < quantity; i++) {
+                    items.push({
+                        serviceId,
+                        data: {
+                            salon_id: serviceForm.salon_id,
+                            hairdresser_id: selectedHairdresser.id,
+                            service_id: serviceId,
+                            service_name: service.name,
+                            price_salon: service.price_salon,
+                            price_coiffeur: service.price_coiffeur,
+                            payment_method: serviceForm.payment_method
+                        }
+                    });
+                }
+            }
+        });
+
+        if (items.length === 0) {
+            setModalError('Aucun service valide sélectionné. Rechargez la page puis réessayez.');
+            return;
+        }
+
+        setSaving(true);
         try {
-            if (!selectedHairdresser || Object.keys(serviceForm.selectedServices).length === 0) return;
+            const serviceDateTime = buildServiceDateTime(serviceForm.service_date);
+            const results = await Promise.allSettled(
+                items.map(item => transactionsAPI.create({ ...item.data, service_date_time: serviceDateTime }))
+            );
 
-            const promises = [];
-            const serviceDateTime = new Date(serviceForm.service_date + 'T' + new Date().toTimeString().slice(0, 8)).toISOString();
-
-            Object.entries(serviceForm.selectedServices).forEach(([serviceId, quantity]) => {
-                const service = services.find(s => s.id === serviceId);
-                if (service && quantity > 0) {
-                    const serviceData = {
-                        salon_id: serviceForm.salon_id,
-                        hairdresser_id: selectedHairdresser.id,
-                        service_id: serviceId,
-                        service_name: service.name,
-                        price_salon: service.price_salon,
-                        price_coiffeur: service.price_coiffeur,
-                        payment_method: serviceForm.payment_method,
-                        service_date_time: serviceDateTime
-                    };
-                    for (let i = 0; i < quantity; i++) {
-                        promises.push(transactionsAPI.create(serviceData));
-                    }
+            const failedByService = {};
+            let failed = 0;
+            let lastError = null;
+            results.forEach((result, i) => {
+                // Un enregistrement réussi renvoie la ligne créée avec son id
+                if (result.status === 'rejected' || !result.value?.id) {
+                    failed++;
+                    const id = items[i].serviceId;
+                    failedByService[id] = (failedByService[id] || 0) + 1;
+                    if (result.status === 'rejected') lastError = result.reason;
                 }
             });
+            const saved = items.length - failed;
 
-            await Promise.all(promises);
-            localStorage.setItem('lastServiceDate', serviceForm.service_date);
+            if (saved > 0) {
+                localStorage.setItem('lastServiceDate', serviceForm.service_date);
+                await loadDailyServices();
+            }
+
+            if (failed > 0) {
+                console.error('Erreur lors de l\'ajout des services:', lastError);
+                // On ne garde sélectionnés que les services non enregistrés,
+                // pour qu'un nouvel essai ne crée pas de doublons.
+                setServiceForm(prev => ({ ...prev, selectedServices: failedByService }));
+                const detail = lastError?.message ? ` (${lastError.message})` : '';
+                setModalError(saved > 0
+                    ? `${saved} service(s) enregistré(s), mais ${failed} n'ont pas pu être enregistré(s)${detail}. ` +
+                      'Seuls les services non enregistrés restent sélectionnés : cliquez à nouveau sur « Ajouter » pour réessayer.'
+                    : `Aucun service n'a été enregistré${detail}. Vérifiez votre connexion internet puis réessayez.`
+                );
+                return;
+            }
+
             setShowServiceModal(false);
-            await loadDailyServices();
-        } catch (err) {
-            setError('Erreur lors de l\'ajout du service');
-            console.error(err);
+            const outOfRange = serviceForm.service_date < startDate || serviceForm.service_date > endDate;
+            setNotice({
+                type: outOfRange ? 'warning' : 'success',
+                text: `${saved} service(s) enregistré(s) pour ${selectedHairdresser.first_name} ${selectedHairdresser.last_name} ` +
+                      `le ${formatDateFr(serviceForm.service_date)}` +
+                      (outOfRange ? ' : cette date est en dehors de la période affichée, changez la période pour les voir.' : '.')
+            });
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -344,6 +432,23 @@ const Presence = () => {
                     <AlertCircle size={20} />
                     {error}
                     <button onClick={() => setError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>×</button>
+                </div>
+            )}
+
+            {notice && (
+                <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-4)',
+                    marginBottom: 'var(--space-4)',
+                    background: notice.type === 'warning' ? 'var(--color-warning-bg)' : 'var(--color-success-bg)',
+                    borderRadius: 'var(--radius-lg)',
+                    color: notice.type === 'warning' ? 'var(--color-warning)' : 'var(--color-success)'
+                }}>
+                    {notice.type === 'warning' ? <AlertCircle size={20} /> : <Check size={20} />}
+                    {notice.text}
+                    <button onClick={() => setNotice(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}>×</button>
                 </div>
             )}
 
@@ -760,24 +865,41 @@ const Presence = () => {
             {/* Add Service Modal */}
             <Modal
                 isOpen={showServiceModal}
-                onClose={() => setShowServiceModal(false)}
+                onClose={() => { if (!saving) setShowServiceModal(false); }}
                 title={`Ajouter des services - ${selectedHairdresser?.first_name} ${selectedHairdresser?.last_name}`}
                 footer={
                     <>
-                        <button className="btn btn-secondary" onClick={() => setShowServiceModal(false)}>
+                        <button className="btn btn-secondary" onClick={() => setShowServiceModal(false)} disabled={saving}>
                             Annuler
                         </button>
-                        <button 
-                            className="btn btn-primary" 
+                        <button
+                            className="btn btn-primary"
                             onClick={handleAddService}
-                            disabled={!serviceForm.salon_id || Object.keys(serviceForm.selectedServices).length === 0}
+                            disabled={saving || !serviceForm.salon_id || Object.keys(serviceForm.selectedServices).length === 0}
                         >
                             <Plus size={16} />
-                            Ajouter ({getSelectedServicesTotals().totalCount} services)
+                            {saving ? 'Enregistrement…' : `Ajouter (${getSelectedServicesTotals().totalCount} services)`}
                         </button>
                     </>
                 }
             >
+                {modalError && (
+                    <div role="alert" style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 'var(--space-3)',
+                        padding: 'var(--space-3) var(--space-4)',
+                        marginBottom: 'var(--space-4)',
+                        background: 'var(--color-error-bg)',
+                        borderRadius: 'var(--radius-lg)',
+                        color: 'var(--color-error)',
+                        fontSize: 'var(--font-size-sm)'
+                    }}>
+                        <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{modalError}</span>
+                    </div>
+                )}
+
                 <div className="form-group">
                     <label className="form-label">Date du service *</label>
                     <input
